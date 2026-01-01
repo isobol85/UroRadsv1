@@ -1,0 +1,330 @@
+import { useState, useRef, useEffect } from "react";
+import { Plus, Send, Loader2, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { CaseImage } from "@/components/CaseImage";
+import { ChatBubble } from "@/components/ChatBubble";
+import { useToast } from "@/hooks/use-toast";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useLocation } from "wouter";
+
+interface Message {
+  id: string;
+  role: "user" | "ai";
+  content: string;
+}
+
+interface AnalyzeResponse {
+  explanation: string;
+  title: string;
+  category: string;
+}
+
+export default function AddCasePage() {
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputValue, setInputValue] = useState("");
+  const [currentExplanation, setCurrentExplanation] = useState("");
+  const [currentTitle, setCurrentTitle] = useState("");
+  const [currentCategory, setCurrentCategory] = useState("");
+  const [hasGeneratedExplanation, setHasGeneratedExplanation] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      const scrollContainer = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
+    }
+  }, [messages]);
+
+  const analyzeMutation = useMutation({
+    mutationFn: async (data: { imageBase64: string; attendingPrompt?: string }) => {
+      const response = await apiRequest("POST", "/api/ai/analyze", data);
+      return response.json() as Promise<AnalyzeResponse>;
+    },
+    onSuccess: (data) => {
+      setCurrentExplanation(data.explanation);
+      setCurrentTitle(data.title);
+      setCurrentCategory(data.category);
+      setHasGeneratedExplanation(true);
+      setMessages(prev => [...prev, {
+        id: `msg-${Date.now()}`,
+        role: "ai",
+        content: `Here's the AI-generated explanation for this case:\n\n${data.explanation}\n\nWould you like me to refine any part of this explanation?`
+      }]);
+    },
+    onError: () => {
+      toast({
+        title: "Analysis failed",
+        description: "Could not analyze the image. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const refineMutation = useMutation({
+    mutationFn: async (data: { imageBase64: string; currentExplanation: string; feedback: string }) => {
+      const response = await apiRequest("POST", "/api/ai/refine", data);
+      return response.json() as Promise<AnalyzeResponse>;
+    },
+    onSuccess: (data) => {
+      setCurrentExplanation(data.explanation);
+      setCurrentTitle(data.title);
+      setCurrentCategory(data.category);
+      setMessages(prev => [...prev, {
+        id: `msg-${Date.now()}`,
+        role: "ai",
+        content: `I've updated the explanation based on your feedback:\n\n${data.explanation}\n\nLet me know if you'd like any more changes, or click "Submit Case" when ready.`
+      }]);
+    },
+    onError: () => {
+      toast({
+        title: "Refinement failed",
+        description: "Could not refine the explanation. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/cases", {
+        title: currentTitle,
+        imageUrl: selectedImage,
+        explanation: currentExplanation,
+        category: currentCategory,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+      toast({
+        title: "Case Published",
+        description: "Your teaching case is now available in the archive.",
+      });
+      setSelectedImage(null);
+      setMessages([]);
+      setCurrentExplanation("");
+      setCurrentTitle("");
+      setCurrentCategory("");
+      setHasGeneratedExplanation(false);
+      navigate("/archive");
+    },
+    onError: () => {
+      toast({
+        title: "Submission failed",
+        description: "Could not save the case. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const isLoading = analyzeMutation.isPending || refineMutation.isPending;
+  const isSubmitting = submitMutation.isPending;
+
+  const handlePlusClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith("image/")) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select an image file.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setSelectedImage(reader.result as string);
+        setMessages([{
+          id: `msg-${Date.now()}`,
+          role: "ai",
+          content: "Would you like to add any more info about this image? (optional - just press send to analyze directly)"
+        }]);
+        setTimeout(() => inputRef.current?.focus(), 100);
+      };
+      reader.readAsDataURL(file);
+    }
+    if (e.target) {
+      e.target.value = "";
+    }
+  };
+
+  const handleSendMessage = () => {
+    if (isLoading) return;
+
+    const userInput = inputValue.trim();
+    
+    if (userInput) {
+      const userMessage: Message = {
+        id: `msg-${Date.now()}`,
+        role: "user",
+        content: userInput,
+      };
+      setMessages(prev => [...prev, userMessage]);
+    }
+    
+    setInputValue("");
+
+    if (!hasGeneratedExplanation) {
+      analyzeMutation.mutate({
+        imageBase64: selectedImage!,
+        attendingPrompt: userInput || undefined,
+      });
+    } else {
+      if (!userInput) return;
+      refineMutation.mutate({
+        imageBase64: selectedImage!,
+        currentExplanation,
+        feedback: userInput,
+      });
+    }
+  };
+
+  const handleSubmitCase = () => {
+    submitMutation.mutate();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleInputFocus = () => {
+    // Scroll the input into view when focused to prevent it from being hidden by mobile keyboard
+    setTimeout(() => {
+      inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+  };
+
+  if (!selectedImage) {
+    return (
+      <div className="flex flex-col h-full">
+        <header className="flex items-center justify-center px-4 h-14 border-b border-border shrink-0">
+          <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <Button
+            size="icon"
+            className="w-20 h-20 rounded-full"
+            onClick={handlePlusClick}
+            data-testid="button-add-image"
+          >
+            <Plus className="w-10 h-10" />
+          </Button>
+          <p className="mt-4 text-sm text-muted-foreground">
+            Tap to add an image
+          </p>
+        </div>
+
+        <div className="shrink-0 p-4 border-t border-border bg-background">
+          <Input
+            placeholder="Add context after selecting an image..."
+            disabled
+            className="opacity-50"
+            data-testid="input-chat-disabled"
+          />
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileSelect}
+          data-testid="input-file"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <header className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
+        <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
+        <Button
+          size="sm"
+          onClick={handleSubmitCase}
+          disabled={isLoading || isSubmitting || !hasGeneratedExplanation}
+          data-testid="button-submit-case"
+        >
+          {isSubmitting ? (
+            <Loader2 className="w-4 h-4 animate-spin mr-1" />
+          ) : (
+            <Check className="w-4 h-4 mr-1" />
+          )}
+          Submit Case
+        </Button>
+      </header>
+
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="shrink-0 p-4">
+          <CaseImage src={selectedImage} alt="Selected case image" />
+        </div>
+
+        <ScrollArea className="flex-1 px-4" ref={scrollRef}>
+          <div className="space-y-3 pb-4">
+            {messages.map((message) => (
+              <ChatBubble
+                key={message.id}
+                role={message.role}
+                content={message.content}
+              />
+            ))}
+
+            {isLoading && (
+              <div className="flex justify-start" data-testid="chat-loading">
+                <div className="bg-muted rounded-2xl rounded-tl-sm p-4">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <div className="shrink-0 p-4 border-t border-border bg-background">
+          <div className="flex gap-2">
+            <Input
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={handleInputFocus}
+              placeholder={hasGeneratedExplanation ? "Refine the explanation..." : "Describe what's in this image (optional)..."}
+              className="flex-1"
+              disabled={isLoading}
+              data-testid="input-chat"
+            />
+            <Button
+              size="icon"
+              onClick={handleSendMessage}
+              disabled={isLoading || (hasGeneratedExplanation && !inputValue.trim())}
+              data-testid="button-send"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

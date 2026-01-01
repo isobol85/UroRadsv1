@@ -1,0 +1,106 @@
+It appears that you are correct and Replit's AI is out of date.
+Based on the current date (December 31, 2025), Google did release the Gemini 3 series (Flash and Pro previews) roughly two weeks ago (around Dec 17, 2025). Replit’s AI likely has a knowledge cutoff before this release, which is why it is hallucinating or getting confused.
+Here is the updated implementation plan you can feed to Replit to fix the backend. It swaps the OpenAI integration for the Google Generative AI SDK using the new Gemini 3 models.
+Core Changes for Replit
+ * Install Package: You need the Google SDK, not OpenAI.
+   * Command: npm install @google/genai (Node) or pip install google-genai (Python).
+ * Model Names: Use gemini-3-pro-preview for high-intelligence tasks (reading CTs) and gemini-3-flash-preview for fast tasks (titles, chat).
+ * Vision Handling: Unlike OpenAI's URL method, Gemini prefers Base64 inline data (for images <20MB) or the File API. Since your CT slices are single images, Base64 is the simplest implementation on Replit.
+Updated Backend Specification (Gemini 3 Edition)
+Goal: Replace the OpenAI API calls in 05-backend-spec.pdf with Google Gemini 3 calls.
+1. Setup & Initialization
+// db/gemini.js
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+// Access your API key as an environment variable (See Source 229)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Define Models
+// Use "Pro" for the heavy lifting (Medical Image Analysis)
+const visionModel = genAI.getGenerativeModel({ 
+  model: "gemini-3-pro-preview", 
+  systemInstruction: "You are a radiology teaching assistant for urology trainees..." // (From Source 220)
+});
+
+// Use "Flash" for fast text tasks (Titles, Categories, Chat)
+const fastModel = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+
+2. Re-mapped API Functions
+Here is how the four LLM calls from your PDF (Source 217) translate to Gemini code.
+Call 1: Generate Explanation (Vision + Text)
+ * Old (OpenAI): messages: [{ role: "user", content: [{ type: "image_url", ... }] }]
+ * New (Gemini): Pass the prompt and image data in a single array.
+<!-- end list -->
+async function generateExplanation(imageBuffer, mimeType, attendingPrompt) {
+  // Convert image buffer to Gemini-friendly inline part
+  const imagePart = {
+    inlineData: {
+      data: imageBuffer.toString("base64"),
+      mimeType: mimeType // e.g., "image/jpeg"
+    },
+  };
+
+  const prompt = attendingPrompt 
+    ? `Analyze this CT image. Additional attending guidance: ${attendingPrompt}` 
+    : "Analyze this CT image and provide a teaching explanation.";
+
+  const result = await visionModel.generateContent([prompt, imagePart]);
+  return result.response.text();
+}
+
+Call 2 & 3: Generate Title & Category (Text Only)
+ * Strategy: Use the faster gemini-3-flash-preview model.
+<!-- end list -->
+async function generateMetadata(explanationText) {
+  // Call 2: Title
+  const titlePrompt = `Based on this radiology explanation, generate a short title (3-4 words). \n\nExplanation: ${explanationText}`;
+  const titleResult = await fastModel.generateContent(titlePrompt);
+  
+  // Call 3: Category
+  const catPrompt = `Assign ONE category from this list (Stones, Hydronephrosis, Mass, Infection, etc) based on this explanation: ${explanationText}`;
+  const catResult = await fastModel.generateContent(catPrompt);
+
+  return {
+    title: titleResult.response.text().trim(),
+    category: catResult.response.text().trim()
+  };
+}
+
+Call 4: Chat Response (Context-Aware)
+ * Old (OpenAI): Sending a list of messages every time.
+ * New (Gemini): Gemini has a dedicated startChat feature that manages history easier, but for a stateless REST API (like UroRads), you can simply reconstruct the history array.
+<!-- end list -->
+async function generateChatResponse(currentMessage, chatHistory, caseExplanation) {
+  // 1. Initialize chat with the "System" context (The Case Explanation)
+  // Note: Gemini treats the explanation as context. 
+  
+  const history = chatHistory.map(msg => ({
+    role: msg.role === 'ai' ? 'model' : 'user', // Map 'ai' -> 'model'
+    parts: [{ text: msg.content }],
+  }));
+
+  const chat = fastModel.startChat({
+    history: [
+        // Prime the chat with the case context first
+        {
+            role: "user",
+            parts: [{ text: `Here is the radiology case context: ${caseExplanation}` }]
+        },
+        {
+            role: "model",
+            parts: [{ text: "Understood. I am ready to answer questions about this case." }]
+        },
+        ...history
+    ],
+  });
+
+  const result = await chat.sendMessage(currentMessage);
+  return result.response.text();
+}
+
+3. Updated System Prompts (Source 219)
+Gemini supports systemInstruction at the model level (defined in step 1), which is more robust than OpenAI's "system" message role.
+ * For visionModel: Copy the text from Source 220 ("You are a radiology teaching assistant...") into the systemInstruction field when initializing the model.
+ * For fastModel: You can pass different system instructions dynamically or initialize separate model instances if the behavior needs to be strictly different (e.g., one strict JSON model, one conversational model).
+Next Step for You
+Would you like me to generate the full server.js file for Replit that includes these Gemini 3 integrations and the Replit Object Storage handling?
