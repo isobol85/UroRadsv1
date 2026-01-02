@@ -47,6 +47,29 @@ export async function registerRoutes(
     }
   });
 
+  const updateCaseSchema = z.object({
+    title: z.string().optional(),
+    explanation: z.string().optional(),
+    category: z.string().optional(),
+  });
+
+  app.patch("/api/cases/:id", async (req, res) => {
+    try {
+      const validated = updateCaseSchema.parse(req.body);
+      const updated = await storage.updateCase(req.params.id, validated);
+      if (!updated) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid case data", details: error.errors });
+      }
+      console.error("Error updating case:", error);
+      res.status(500).json({ error: "Failed to update case" });
+    }
+  });
+
   app.delete("/api/cases/:id", async (req, res) => {
     try {
       const deleted = await storage.deleteCase(req.params.id);

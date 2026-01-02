@@ -7,6 +7,7 @@ import { BottomNav } from "@/components/BottomNav";
 import CasePage from "@/pages/CasePage";
 import ArchivePage from "@/pages/ArchivePage";
 import AddCasePage from "@/pages/AddCasePage";
+import EditCasePage from "@/pages/EditCasePage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/case/:id" component={CasePage} />
       <Route path="/archive" component={ArchivePage} />
       <Route path="/add" component={AddCasePage} />
+      <Route path="/edit/:id" component={EditCasePage} />
       <Route component={NotFound} />
     </Switch>
   );

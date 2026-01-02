@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "wouter";
-import { FolderOpen, Loader2, Trash2 } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { FolderOpen, Loader2, Trash2, Pencil } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -39,19 +39,20 @@ function getCategoryColor(category: string): string {
 interface SwipeableCaseItemProps {
   case_: Case;
   onDeleteClick: (case_: Case) => void;
+  onEditClick: (case_: Case) => void;
 }
 
-function SwipeableCaseItem({ case_, onDeleteClick }: SwipeableCaseItemProps) {
+function SwipeableCaseItem({ case_, onDeleteClick, onEditClick }: SwipeableCaseItemProps) {
   const x = useMotionValue(0);
-  const trashOpacity = useTransform(x, [-40, 0], [1, 0]);
-  const trashScale = useTransform(x, [-40, 0], [1, 0.5]);
+  const actionOpacity = useTransform(x, [-60, 0], [1, 0]);
+  const actionScale = useTransform(x, [-60, 0], [1, 0.5]);
   const [isDragging, setIsDragging] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     setIsDragging(false);
-    if (info.offset.x < -40) {
-      x.set(-64);
+    if (info.offset.x < -60) {
+      x.set(-112);
       setIsOpen(true);
     } else {
       x.set(0);
@@ -67,28 +68,49 @@ function SwipeableCaseItem({ case_, onDeleteClick }: SwipeableCaseItemProps) {
     setIsOpen(false);
   };
 
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onEditClick(case_);
+    x.set(0);
+    setIsOpen(false);
+  };
+
   return (
     <div className="relative overflow-hidden border-b border-border">
       <motion.div
-        className="absolute right-0 top-0 bottom-0 flex items-center justify-center w-16 bg-destructive"
-        style={{ opacity: trashOpacity }}
+        className="absolute right-0 top-0 bottom-0 flex items-center"
+        style={{ opacity: actionOpacity }}
       >
-        <motion.div style={{ scale: trashScale }}>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="text-destructive-foreground"
-            onClick={handleTrashClick}
-            data-testid={`button-delete-${case_.id}`}
-          >
-            <Trash2 className="w-5 h-5" />
-          </Button>
+        <motion.div style={{ scale: actionScale }} className="flex">
+          <div className="w-14 h-full flex items-center justify-center bg-primary">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="text-primary-foreground"
+              onClick={handleEditClick}
+              data-testid={`button-edit-${case_.id}`}
+            >
+              <Pencil className="w-5 h-5" />
+            </Button>
+          </div>
+          <div className="w-14 h-full flex items-center justify-center bg-destructive">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="text-destructive-foreground"
+              onClick={handleTrashClick}
+              data-testid={`button-delete-${case_.id}`}
+            >
+              <Trash2 className="w-5 h-5" />
+            </Button>
+          </div>
         </motion.div>
       </motion.div>
 
       <motion.div
         drag="x"
-        dragConstraints={{ left: -64, right: 0 }}
+        dragConstraints={{ left: -112, right: 0 }}
         dragElastic={0.5}
         onDragStart={() => setIsDragging(true)}
         onDragEnd={handleDragEnd}
@@ -139,6 +161,7 @@ function SwipeableCaseItem({ case_, onDeleteClick }: SwipeableCaseItemProps) {
 
 export default function ArchivePage() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
 
   const { data: cases = [], isLoading } = useQuery<Case[]>({
@@ -168,6 +191,10 @@ export default function ArchivePage() {
 
   const handleDeleteClick = (case_: Case) => {
     setCaseToDelete(case_);
+  };
+
+  const handleEditClick = (case_: Case) => {
+    navigate(`/edit/${case_.id}`);
   };
 
   const confirmDelete = () => {
@@ -226,6 +253,7 @@ export default function ArchivePage() {
               key={case_.id} 
               case_={case_} 
               onDeleteClick={handleDeleteClick}
+              onEditClick={handleEditClick}
             />
           ))}
         </div>

@@ -9,6 +9,7 @@ export interface IStorage {
   getCaseByNumber(caseNumber: number): Promise<Case | undefined>;
   getNextCaseNumber(): Promise<number>;
   createCase(case_: InsertCase): Promise<Case>;
+  updateCase(id: string, updates: { title?: string; explanation?: string; category?: string }): Promise<Case | undefined>;
   deleteCase(id: string): Promise<boolean>;
   getChatMessages(caseId: string): Promise<ChatMessage[]>;
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
@@ -51,6 +52,29 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return case_;
+  }
+
+  async updateCase(id: string, updates: { title?: string; explanation?: string; category?: string }): Promise<Case | undefined> {
+    const existingCase = await this.getCase(id);
+    if (!existingCase) {
+      return undefined;
+    }
+    
+    const updateData: Partial<{ title: string; explanation: string; category: string }> = {};
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.explanation !== undefined) updateData.explanation = updates.explanation;
+    if (updates.category !== undefined) updateData.category = updates.category;
+    
+    if (Object.keys(updateData).length === 0) {
+      return existingCase;
+    }
+    
+    const [updated] = await db
+      .update(cases)
+      .set(updateData)
+      .where(eq(cases.id, id))
+      .returning();
+    return updated || undefined;
   }
 
   async deleteCase(id: string): Promise<boolean> {
