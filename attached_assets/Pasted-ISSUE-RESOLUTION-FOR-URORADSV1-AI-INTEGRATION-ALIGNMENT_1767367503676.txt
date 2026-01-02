@@ -1,0 +1,80 @@
+ISSUE RESOLUTION FOR URORADSV1 - AI INTEGRATION ALIGNMENT
+
+PROBLEM SUMMARY:
+The codebase has conflicting AI configurations. Documentation claims Gemini but code uses OpenAI SDK. Both integrations are enabled causing confusion.
+
+CURRENT STATE:
+- server/ai.ts uses OpenAI SDK with model "gpt-5.1"
+- .replit has both openai and gemini integrations enabled
+- replit.md documentation incorrectly states "Gemini 2.5 Flash"
+- Images stored as base64 data URLs (will cause database bloat)
+
+RECOMMENDED APPROACH: Keep OpenAI Integration (Already Working)
+
+STEP 1: VERIFY CURRENT AI INTEGRATION
+Check that these environment variables are set in Replit Secrets:
+- AI_INTEGRATIONS_OPENAI_API_KEY
+- AI_INTEGRATIONS_OPENAI_BASE_URL
+
+These should be automatically configured by Replit's OpenAI integration.
+
+STEP 2: CONFIRM CORRECT MODEL NAME
+The model "gpt-5.1" in server/ai.ts line 15 should be verified against Replit's OpenAI integration documentation. If using Replit's proxy, common model names are:
+- "gpt-4-turbo" for vision + text
+- "gpt-4o" for multimodal tasks
+- "gpt-4" for general tasks
+
+Check Replit docs or test which model name works. Update the MODEL constant if needed.
+
+STEP 3: UPDATE DOCUMENTATION
+Edit replit.md line 77-78 to match actual implementation:
+OLD: "Gemini 2.5 Flash: Via Replit AI Integrations"
+NEW: "OpenAI GPT-4: Via Replit OpenAI AI Integrations using gpt-5.1 model"
+
+STEP 4: CLEAN UP UNUSED INTEGRATION
+Since the code uses OpenAI, remove the unused Gemini integration from .replit line 42:
+OLD: integrations = ["javascript_object_storage:2.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_gemini_ai_integrations:2.0.0", "javascript_database:1.0.0"]
+NEW: integrations = ["javascript_object_storage:2.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_database:1.0.0"]
+
+STEP 5 (OPTIONAL): SWITCH TO OBJECT STORAGE FOR IMAGES
+Currently images are stored as base64 data URLs which will bloat the database. To use Replit Object Storage:
+
+A. Update AddCasePage.tsx to use ObjectUploader component instead of FileReader
+B. Add object storage route registration in server/index.ts:
+   import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+   registerObjectStorageRoutes(app);
+C. Update imageUrl field to store object storage URLs instead of data URLs
+D. Add cleanup logic to delete old images when cases are deleted
+
+ALTERNATIVE APPROACH: Switch to Gemini (If Preferred)
+
+If you prefer to use Gemini instead of OpenAI:
+
+STEP 1: Install Google Generative AI SDK
+Run: npm install @google/generative-ai
+
+STEP 2: Replace server/ai.ts implementation
+Replace OpenAI SDK calls with Google Generative AI SDK:
+- Use GoogleGenerativeAI client instead of OpenAI client
+- Use model "gemini-2.0-flash-exp" or "gemini-1.5-pro"
+- Update environment variables to use AI_INTEGRATIONS_GEMINI_API_KEY
+- Adjust message format (Gemini uses different structure than OpenAI)
+
+STEP 3: Update .replit integrations
+Keep only: "javascript_gemini_ai_integrations:2.0.0"
+
+TESTING CHECKLIST:
+□ Upload a test CT scan image in Add Case page
+□ Verify AI generates explanation without errors
+□ Check title and category are generated correctly
+□ Test chat functionality on a case
+□ Verify images display properly
+□ Check database size doesn't grow excessively with multiple images
+
+KNOWN WORKING CONFIGURATION:
+- Using OpenAI SDK with Replit's OpenAI integration proxy
+- Model: gpt-5.1 (verify this model name with Replit docs)
+- Environment variables auto-configured by Replit
+- Base64 image encoding (works but not scalable)
+
+The app should be fully functional once the model name is verified and documentation is aligned with actual implementation.
