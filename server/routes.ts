@@ -2,8 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCaseSchema, insertChatMessageSchema } from "@shared/schema";
-import { generateExplanation, generateTitle, generateCategory, generateChatResponse, refineExplanation, analyzeVideoFrames, testMultiImageCapability } from "./ai";
-import { extractFramesFromVideo, getVideoInfo, compressVideo } from "./video";
+import { generateExplanation, generateTitle, generateCategory, generateChatResponse, refineExplanation, testMultiImageCapability } from "./ai";
+import { getVideoInfo, compressVideo } from "./video";
+import { analyzeVideo } from "./video-analysis";
 import { z } from "zod";
 import multer from "multer";
 import { objectStorageClient } from "./replit_integrations/object_storage";
@@ -267,34 +268,22 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No video file uploaded" });
       }
 
-      const frameCount = parseInt(req.body.frameCount || "10", 10);
       const attendingPrompt = req.body.attendingPrompt;
+      const filename = req.file.originalname || "video.mp4";
 
-      console.log(`Processing video: ${req.file.originalname}, size: ${req.file.size} bytes`);
-      console.log(`Extracting ${frameCount} frames...`);
+      console.log(`Processing video: ${filename}, size: ${req.file.size} bytes`);
 
       // Get video info
       const videoInfo = await getVideoInfo(req.file.buffer);
       console.log(`Video info: duration=${videoInfo.duration}s, ${videoInfo.width}x${videoInfo.height}, ${videoInfo.fps}fps`);
 
-      // Extract frames
-      const frames = await extractFramesFromVideo(req.file.buffer, { frameCount });
-      console.log(`Extracted ${frames.length} frames`);
-
-      // Use 5th frame (index 4) as thumbnail, or middle frame if less than 5
-      const thumbnailIndex = Math.min(4, Math.floor(frames.length / 2));
-      const thumbnailFrame = frames[thumbnailIndex];
-      const thumbnail = `data:${thumbnailFrame.mimeType};base64,${thumbnailFrame.base64}`;
-
-      // Analyze with AI first (before uploading to storage)
-      // This way if AI fails, we don't have orphaned uploads
-      console.log(`Sending ${frames.length} frames to Gemini for analysis...`);
-      const explanation = await analyzeVideoFrames(frames, attendingPrompt);
+      // Analyze with the video analysis service (native or frame extraction based on VIDEO_ANALYSIS_MODE)
+      const analysisResult = await analyzeVideo(req.file.buffer, filename, attendingPrompt);
       
       // Generate title and category from the explanation
       const [title, category] = await Promise.all([
-        generateTitle(explanation),
-        generateCategory(explanation),
+        generateTitle(analysisResult.explanation),
+        generateCategory(analysisResult.explanation),
       ]);
 
       // Only compress and upload after AI analysis succeeds
@@ -302,16 +291,16 @@ export async function registerRoutes(
       const compressedVideo = await compressVideo(req.file.buffer);
       
       console.log("Uploading compressed video to object storage...");
-      const videoUrl = await uploadVideoToStorage(compressedVideo, req.file.originalname || "video.mp4");
+      const videoUrl = await uploadVideoToStorage(compressedVideo, filename);
       console.log(`Video uploaded: ${videoUrl}`);
 
       res.json({
-        explanation,
+        explanation: analysisResult.explanation,
         title,
         category,
         videoInfo,
-        framesExtracted: frames.length,
-        thumbnail,
+        analysisStrategy: analysisResult.strategy,
+        thumbnail: analysisResult.thumbnail,
         videoUrl,
         mediaType: "video",
       });
