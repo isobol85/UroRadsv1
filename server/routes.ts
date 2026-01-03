@@ -214,6 +214,11 @@ export async function registerRoutes(
       const frames = await extractFramesFromVideo(req.file.buffer, { frameCount });
       console.log(`Extracted ${frames.length} frames`);
 
+      // Use 5th frame (index 4) as thumbnail, or middle frame if less than 5
+      const thumbnailIndex = Math.min(4, Math.floor(frames.length / 2));
+      const thumbnailFrame = frames[thumbnailIndex];
+      const thumbnail = `data:${thumbnailFrame.mimeType};base64,${thumbnailFrame.base64}`;
+
       // Analyze with AI (Gemini multi-image)
       console.log(`Sending ${frames.length} frames to Gemini for analysis...`);
       const explanation = await analyzeVideoFrames(frames, attendingPrompt);
@@ -230,6 +235,7 @@ export async function registerRoutes(
         category,
         videoInfo,
         framesExtracted: frames.length,
+        thumbnail,
       });
     } catch (error) {
       console.error("Error analyzing video:", error);

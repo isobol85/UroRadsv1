@@ -34,6 +34,7 @@ interface VideoAnalyzeResponse {
     fps: number;
   };
   framesExtracted: number;
+  thumbnail: string;
 }
 
 type ViewMode = "image" | "read";
@@ -129,6 +130,7 @@ export default function AddCasePage() {
       setCurrentExplanation(data.explanation);
       setCurrentTitle(data.title);
       setCurrentCategory(data.category);
+      setSelectedImage(data.thumbnail);
       setHasGeneratedExplanation(true);
       setMessages(prev => [...prev, {
         id: `msg-${Date.now()}`,
@@ -488,13 +490,13 @@ export default function AddCasePage() {
                   data-testid="video-preview"
                 />
               </div>
-            ) : (
+            ) : selectedImage ? (
               <CaseImage 
                 src={selectedImage} 
                 alt="Selected case image"
                 fillHeight
               />
-            )}
+            ) : null}
           </div>
           
           {hasGeneratedExplanation ? (
