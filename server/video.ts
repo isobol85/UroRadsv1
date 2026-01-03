@@ -68,6 +68,41 @@ export async function extractFramesFromVideo(
   }
 }
 
+export async function compressVideo(
+  videoBuffer: Buffer,
+  options: {
+    maxSizeMB?: number;
+  } = {}
+): Promise<Buffer> {
+  const { maxSizeMB = 20 } = options;
+  
+  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ct-compress-"));
+  const inputPath = path.join(tempDir, "input.mp4");
+  const outputPath = path.join(tempDir, "output.mp4");
+  
+  try {
+    await fs.promises.writeFile(inputPath, videoBuffer);
+    
+    // Compress with H.264, CRF 18 for medical quality, movflags for progressive playback
+    await execAsync(
+      `ffmpeg -i "${inputPath}" -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p -movflags +faststart -y "${outputPath}" -hide_banner -loglevel error`
+    );
+    
+    const compressedBuffer = await fs.promises.readFile(outputPath);
+    const compressedSizeMB = compressedBuffer.length / (1024 * 1024);
+    
+    console.log(`Video compressed: ${(videoBuffer.length / (1024 * 1024)).toFixed(2)}MB -> ${compressedSizeMB.toFixed(2)}MB`);
+    
+    if (compressedSizeMB > maxSizeMB) {
+      throw new Error(`Compressed video (${compressedSizeMB.toFixed(2)}MB) exceeds max size of ${maxSizeMB}MB`);
+    }
+    
+    return compressedBuffer;
+  } finally {
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 export async function getVideoInfo(videoBuffer: Buffer): Promise<{
   duration: number;
   width: number;

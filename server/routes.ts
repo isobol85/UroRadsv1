@@ -3,14 +3,70 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCaseSchema, insertChatMessageSchema } from "@shared/schema";
 import { generateExplanation, generateTitle, generateCategory, generateChatResponse, refineExplanation, analyzeVideoFrames, testMultiImageCapability } from "./ai";
-import { extractFramesFromVideo, getVideoInfo } from "./video";
+import { extractFramesFromVideo, getVideoInfo, compressVideo } from "./video";
 import { z } from "zod";
 import multer from "multer";
+import { objectStorageClient } from "./replit_integrations/object_storage";
+import { randomUUID } from "crypto";
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB max
 });
+
+// Upload video to object storage and return the public URL
+async function uploadVideoToStorage(videoBuffer: Buffer, filename: string): Promise<string> {
+  const privateDir = process.env.PRIVATE_OBJECT_DIR;
+  if (!privateDir) {
+    throw new Error("PRIVATE_OBJECT_DIR not set");
+  }
+  
+  const objectId = `videos/${randomUUID()}-${filename}`;
+  const fullPath = `${privateDir}/${objectId}`;
+  
+  // Parse bucket and object name from path
+  const pathParts = fullPath.split("/").filter(p => p.length > 0);
+  const bucketName = pathParts[0];
+  const objectName = pathParts.slice(1).join("/");
+  
+  const bucket = objectStorageClient.bucket(bucketName);
+  const file = bucket.file(objectName);
+  
+  await file.save(videoBuffer, {
+    contentType: "video/mp4",
+    metadata: {
+      cacheControl: "public, max-age=31536000",
+    },
+  });
+  
+  // Return the direct GCS URL (publicly accessible)
+  return `https://storage.googleapis.com/${bucketName}/${objectName}`;
+}
+
+// Delete video from object storage
+async function deleteVideoFromStorage(videoUrl: string): Promise<void> {
+  if (!videoUrl || !videoUrl.includes("storage.googleapis.com")) {
+    return;
+  }
+  
+  try {
+    const url = new URL(videoUrl);
+    const pathParts = url.pathname.split("/").filter(p => p.length > 0);
+    const bucketName = pathParts[0];
+    const objectName = pathParts.slice(1).join("/");
+    
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    
+    const [exists] = await file.exists();
+    if (exists) {
+      await file.delete();
+      console.log(`Deleted video from storage: ${objectName}`);
+    }
+  } catch (error) {
+    console.error("Error deleting video from storage:", error);
+  }
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -79,6 +135,17 @@ export async function registerRoutes(
 
   app.delete("/api/cases/:id", async (req, res) => {
     try {
+      // Get case first to check for video URL
+      const caseToDelete = await storage.getCase(req.params.id);
+      if (!caseToDelete) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+      
+      // Delete video from object storage if it exists
+      if (caseToDelete.videoUrl) {
+        await deleteVideoFromStorage(caseToDelete.videoUrl);
+      }
+      
       const deleted = await storage.deleteCase(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Case not found" });
@@ -219,7 +286,8 @@ export async function registerRoutes(
       const thumbnailFrame = frames[thumbnailIndex];
       const thumbnail = `data:${thumbnailFrame.mimeType};base64,${thumbnailFrame.base64}`;
 
-      // Analyze with AI (Gemini multi-image)
+      // Analyze with AI first (before uploading to storage)
+      // This way if AI fails, we don't have orphaned uploads
       console.log(`Sending ${frames.length} frames to Gemini for analysis...`);
       const explanation = await analyzeVideoFrames(frames, attendingPrompt);
       
@@ -229,6 +297,14 @@ export async function registerRoutes(
         generateCategory(explanation),
       ]);
 
+      // Only compress and upload after AI analysis succeeds
+      console.log("Compressing video for storage...");
+      const compressedVideo = await compressVideo(req.file.buffer);
+      
+      console.log("Uploading compressed video to object storage...");
+      const videoUrl = await uploadVideoToStorage(compressedVideo, req.file.originalname || "video.mp4");
+      console.log(`Video uploaded: ${videoUrl}`);
+
       res.json({
         explanation,
         title,
@@ -236,6 +312,8 @@ export async function registerRoutes(
         videoInfo,
         framesExtracted: frames.length,
         thumbnail,
+        videoUrl,
+        mediaType: "video",
       });
     } catch (error) {
       console.error("Error analyzing video:", error);

@@ -49,6 +49,8 @@ export class DatabaseStorage implements IStorage {
         explanation: insertCase.explanation,
         category: insertCase.category,
         attendingPrompt: insertCase.attendingPrompt ?? null,
+        videoUrl: insertCase.videoUrl ?? null,
+        mediaType: insertCase.mediaType ?? "image",
       })
       .returning();
     return case_;

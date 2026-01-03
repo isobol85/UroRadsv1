@@ -10,6 +10,8 @@ export const cases = pgTable("cases", {
   explanation: text("explanation").notNull(),
   category: text("category").notNull(),
   attendingPrompt: text("attending_prompt"),
+  videoUrl: text("video_url"),
+  mediaType: text("media_type").notNull().default("image"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

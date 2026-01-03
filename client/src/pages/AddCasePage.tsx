@@ -35,6 +35,8 @@ interface VideoAnalyzeResponse {
   };
   framesExtracted: number;
   thumbnail: string;
+  videoUrl: string;
+  mediaType: "video";
 }
 
 type ViewMode = "image" | "read";
@@ -44,6 +46,7 @@ export default function AddCasePage() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const [storedVideoUrl, setStoredVideoUrl] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<MediaType>("image");
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -131,6 +134,7 @@ export default function AddCasePage() {
       setCurrentTitle(data.title);
       setCurrentCategory(data.category);
       setSelectedImage(data.thumbnail);
+      setStoredVideoUrl(data.videoUrl);
       setHasGeneratedExplanation(true);
       setMessages(prev => [...prev, {
         id: `msg-${Date.now()}`,
@@ -178,6 +182,8 @@ export default function AddCasePage() {
         imageUrl: selectedImage,
         explanation: currentExplanation,
         category: currentCategory,
+        videoUrl: storedVideoUrl,
+        mediaType: mediaType,
       });
       return response.json();
     },
@@ -226,6 +232,7 @@ export default function AddCasePage() {
       URL.revokeObjectURL(selectedVideoUrl);
     }
     setSelectedVideoUrl(null);
+    setStoredVideoUrl(null);
     setMode("image");
     setMessages([]);
     setHasGeneratedExplanation(false);

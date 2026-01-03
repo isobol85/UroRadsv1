@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
-import { Send, ChevronRight, ChevronUp, Loader2 } from "lucide-react";
+import { Send, ChevronRight, ChevronUp, Loader2, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -239,11 +239,24 @@ export default function CasePage() {
           onTransitionEnd={isImageMode ? handleTransitionEnd : undefined}
         >
           <div className="flex-1 flex flex-col p-4 min-h-0">
-            <CaseImage 
-              src={currentCase.imageUrl} 
-              alt={currentCase.title}
-              fillHeight
-            />
+            {currentCase.mediaType === "video" && currentCase.videoUrl ? (
+              <div className="flex-1 flex items-center justify-center rounded-md overflow-hidden bg-black/5 dark:bg-white/5">
+                <video
+                  src={currentCase.videoUrl}
+                  controls
+                  preload="metadata"
+                  poster={currentCase.imageUrl}
+                  className="max-w-full max-h-full object-contain"
+                  data-testid="video-player"
+                />
+              </div>
+            ) : (
+              <CaseImage 
+                src={currentCase.imageUrl} 
+                alt={currentCase.title}
+                fillHeight
+              />
+            )}
             <p className="mt-2 text-sm font-medium text-center text-muted-foreground shrink-0" data-testid="text-case-title">
               {currentCase.title}
             </p>
@@ -277,19 +290,24 @@ export default function CasePage() {
               data-testid="button-thumbnail"
             >
               <div className="flex items-center gap-3">
-                <div className="w-20 h-14 bg-muted border border-border rounded-md overflow-hidden shrink-0">
+                <div className="w-20 h-14 bg-muted border border-border rounded-md overflow-hidden shrink-0 relative">
                   <img
                     src={currentCase.imageUrl}
                     alt={currentCase.title}
                     className="w-full h-full object-contain bg-black/5 dark:bg-white/5"
                   />
+                  {currentCase.mediaType === "video" && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <Video className="w-5 h-5 text-white" />
+                    </div>
+                  )}
                 </div>
                 <div className="text-left">
                   <p className="text-sm font-medium" data-testid="text-thumbnail-title">
                     {currentCase.title}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Tap to view image
+                    {currentCase.mediaType === "video" ? "Tap to view video" : "Tap to view image"}
                   </p>
                 </div>
               </div>
