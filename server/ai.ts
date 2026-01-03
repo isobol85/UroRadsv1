@@ -12,7 +12,60 @@ const openai = new OpenAI({
   baseURL: baseUrl || "",
 });
 
+// Gemini via Replit AI Integration proxy
+const geminiApiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+const geminiBaseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+
+if (!geminiApiKey || !geminiBaseUrl) {
+  console.warn("Gemini AI integration environment variables not configured");
+}
+
 const MODEL = "gpt-5.1";
+const GEMINI_MODEL = "gemini-2.5-flash";
+
+// Helper function to call Gemini generateContent with multiple images
+// Uses direct fetch to the Replit proxy endpoint
+async function callGeminiMultiImage(
+  textPrompt: string,
+  images: Array<{ base64: string; mimeType: string }>
+): Promise<string> {
+  const url = `${geminiBaseUrl}/models/${GEMINI_MODEL}:generateContent`;
+  
+  // Build parts array with images first, then text
+  const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
+  
+  // Add each image as inline data
+  for (const img of images) {
+    parts.push({
+      inlineData: {
+        mimeType: img.mimeType,
+        data: img.base64,
+      },
+    });
+  }
+  
+  // Add text prompt at the end
+  parts.push({ text: textPrompt });
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${geminiApiKey}`,
+    },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
 
 const SYSTEM_PROMPT_EXPLANATION = `You are a radiology teaching assistant for urology trainees.
 Analyze this CT image and provide a teaching explanation.
@@ -193,4 +246,65 @@ Please update the explanation based on this feedback. Keep the same educational 
   });
 
   return response.choices[0]?.message?.content || currentExplanation;
+}
+
+const SYSTEM_PROMPT_VIDEO_ANALYSIS = `You are a radiology teaching assistant for urology trainees.
+You are viewing a sequence of CT scan frames extracted from a video showing an axial scroll through the scan.
+The frames are presented in order from superior to inferior (or as recorded in the video).
+
+Analyze these sequential CT images and provide a comprehensive teaching explanation:
+
+1. OVERVIEW: Describe the scan orientation and what body region is being shown
+2. FRAME-BY-FRAME ANALYSIS: Walk through the key anatomical changes as we scroll through the slices
+3. KEY FINDINGS: Identify any pathology or abnormalities you observe, noting which frames they appear in
+4. TEACHING POINTS: Explain the recognition features that help learners identify these findings
+5. DIFFERENTIAL CONSIDERATIONS: If pathology is present, briefly discuss what else might look similar
+
+Write for PGY-2 residents and new APPs learning uro-radiology.
+Be thorough but organized - this is a teaching case.`;
+
+export interface FrameImage {
+  index: number;
+  base64: string;
+  mimeType: string;
+}
+
+export async function analyzeVideoFrames(
+  frames: FrameImage[],
+  attendingPrompt?: string
+): Promise<string> {
+  const prompt = attendingPrompt 
+    ? `${SYSTEM_PROMPT_VIDEO_ANALYSIS}\n\nAdditional guidance from the attending: ${attendingPrompt}`
+    : SYSTEM_PROMPT_VIDEO_ANALYSIS;
+
+  const textPrompt = `${prompt}\n\nThe following ${frames.length} frames are extracted from a CT scan video, shown in sequence:`;
+  
+  const images = frames.map(frame => ({
+    base64: frame.base64,
+    mimeType: frame.mimeType,
+  }));
+
+  return await callGeminiMultiImage(textPrompt, images);
+}
+
+export async function testMultiImageCapability(
+  images: Array<{ base64: string; mimeType: string }>
+): Promise<{ success: boolean; response: string; imageCount: number }> {
+  try {
+    const textPrompt = `You are being sent ${images.length} images. Please confirm you can see all of them by describing what you see in each image briefly (1 sentence each). Number your descriptions.`;
+
+    const response = await callGeminiMultiImage(textPrompt, images);
+
+    return {
+      success: true,
+      response,
+      imageCount: images.length,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      response: error instanceof Error ? error.message : "Unknown error",
+      imageCount: images.length,
+    };
+  }
 }

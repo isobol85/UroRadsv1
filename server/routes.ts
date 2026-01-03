@@ -2,8 +2,15 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCaseSchema, insertChatMessageSchema } from "@shared/schema";
-import { generateExplanation, generateTitle, generateCategory, generateChatResponse, refineExplanation } from "./ai";
+import { generateExplanation, generateTitle, generateCategory, generateChatResponse, refineExplanation, analyzeVideoFrames, testMultiImageCapability } from "./ai";
+import { extractFramesFromVideo, getVideoInfo } from "./video";
 import { z } from "zod";
+import multer from "multer";
+
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB max
+});
 
 export async function registerRoutes(
   httpServer: Server,
@@ -183,6 +190,96 @@ export async function registerRoutes(
       }
       console.error("Error generating chat response:", error);
       res.status(500).json({ error: "Failed to generate response" });
+    }
+  });
+
+  // Video analysis endpoints
+  app.post("/api/ai/analyze-video", upload.single("video"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file uploaded" });
+      }
+
+      const frameCount = parseInt(req.body.frameCount || "10", 10);
+      const attendingPrompt = req.body.attendingPrompt;
+
+      console.log(`Processing video: ${req.file.originalname}, size: ${req.file.size} bytes`);
+      console.log(`Extracting ${frameCount} frames...`);
+
+      // Get video info
+      const videoInfo = await getVideoInfo(req.file.buffer);
+      console.log(`Video info: duration=${videoInfo.duration}s, ${videoInfo.width}x${videoInfo.height}, ${videoInfo.fps}fps`);
+
+      // Extract frames
+      const frames = await extractFramesFromVideo(req.file.buffer, { frameCount });
+      console.log(`Extracted ${frames.length} frames`);
+
+      // Analyze with AI
+      console.log(`Sending ${frames.length} frames to GPT-5.1 for analysis...`);
+      const explanation = await analyzeVideoFrames(frames, attendingPrompt);
+      
+      // Generate title and category from the explanation
+      const [title, category] = await Promise.all([
+        generateTitle(explanation),
+        generateCategory(explanation),
+      ]);
+
+      res.json({
+        explanation,
+        title,
+        category,
+        videoInfo,
+        framesExtracted: frames.length,
+      });
+    } catch (error) {
+      console.error("Error analyzing video:", error);
+      res.status(500).json({ 
+        error: "Failed to analyze video",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Test endpoint for multi-image capability
+  const testMultiImageSchema = z.object({
+    images: z.array(z.object({
+      base64: z.string(),
+      mimeType: z.string(),
+    })).min(1).max(20),
+  });
+
+  app.post("/api/ai/test-multi-image", async (req, res) => {
+    try {
+      const { images } = testMultiImageSchema.parse(req.body);
+      console.log(`Testing multi-image capability with ${images.length} images...`);
+      
+      const result = await testMultiImageCapability(images);
+      
+      res.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+      }
+      console.error("Error testing multi-image:", error);
+      res.status(500).json({ error: "Failed to test multi-image capability" });
+    }
+  });
+
+  // Video info endpoint (for previewing before full analysis)
+  app.post("/api/video/info", upload.single("video"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file uploaded" });
+      }
+
+      const videoInfo = await getVideoInfo(req.file.buffer);
+      res.json(videoInfo);
+    } catch (error) {
+      console.error("Error getting video info:", error);
+      res.status(500).json({ 
+        error: "Failed to get video info",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   });
 
