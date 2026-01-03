@@ -214,8 +214,8 @@ export async function registerRoutes(
       const frames = await extractFramesFromVideo(req.file.buffer, { frameCount });
       console.log(`Extracted ${frames.length} frames`);
 
-      // Analyze with AI
-      console.log(`Sending ${frames.length} frames to GPT-5.1 for analysis...`);
+      // Analyze with AI (Gemini multi-image)
+      console.log(`Sending ${frames.length} frames to Gemini for analysis...`);
       const explanation = await analyzeVideoFrames(frames, attendingPrompt);
       
       // Generate title and category from the explanation

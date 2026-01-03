@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Plus, Send, Loader2, Check, ChevronUp } from "lucide-react";
+import { Plus, Send, Loader2, Check, ChevronUp, Image, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,10 +23,27 @@ interface AnalyzeResponse {
   category: string;
 }
 
+interface VideoAnalyzeResponse {
+  explanation: string;
+  title: string;
+  category: string;
+  videoInfo: {
+    duration: number;
+    width: number;
+    height: number;
+    fps: number;
+  };
+  framesExtracted: number;
+}
+
 type ViewMode = "image" | "read";
+type MediaType = "image" | "video";
 
 export default function AddCasePage() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
+  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<MediaType>("image");
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [currentExplanation, setCurrentExplanation] = useState("");
@@ -91,6 +108,43 @@ export default function AddCasePage() {
     },
   });
 
+  const videoAnalyzeMutation = useMutation({
+    mutationFn: async (data: { video: File; attendingPrompt?: string }) => {
+      const formData = new FormData();
+      formData.append("video", data.video);
+      if (data.attendingPrompt) {
+        formData.append("attendingPrompt", data.attendingPrompt);
+      }
+      const response = await fetch("/api/ai/analyze-video", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Video analysis failed");
+      }
+      return response.json() as Promise<VideoAnalyzeResponse>;
+    },
+    onSuccess: (data) => {
+      setCurrentExplanation(data.explanation);
+      setCurrentTitle(data.title);
+      setCurrentCategory(data.category);
+      setHasGeneratedExplanation(true);
+      setMessages(prev => [...prev, {
+        id: `msg-${Date.now()}`,
+        role: "ai",
+        content: `Here's the AI-generated explanation from your ${data.framesExtracted}-frame CT scan video (${data.videoInfo.duration}s):\n\n${data.explanation}\n\nWould you like me to refine any part of this explanation?`
+      }]);
+    },
+    onError: () => {
+      toast({
+        title: "Video analysis failed",
+        description: "Could not analyze the video. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const refineMutation = useMutation({
     mutationFn: async (data: { imageBase64: string; currentExplanation: string; feedback: string }) => {
       const response = await apiRequest("POST", "/api/ai/refine", data);
@@ -149,11 +203,34 @@ export default function AddCasePage() {
     },
   });
 
-  const isLoading = analyzeMutation.isPending || refineMutation.isPending;
+  const isLoading = analyzeMutation.isPending || refineMutation.isPending || videoAnalyzeMutation.isPending;
   const isSubmitting = submitMutation.isPending;
+
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const handlePlusClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleVideoClick = () => {
+    videoInputRef.current?.click();
+  };
+
+  const resetState = () => {
+    setSelectedImage(null);
+    setSelectedVideo(null);
+    // Revoke old object URL to prevent memory leak
+    if (selectedVideoUrl) {
+      URL.revokeObjectURL(selectedVideoUrl);
+    }
+    setSelectedVideoUrl(null);
+    setMode("image");
+    setMessages([]);
+    setHasGeneratedExplanation(false);
+    setCurrentExplanation("");
+    setCurrentTitle("");
+    setCurrentCategory("");
+    setInputValue("");
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -169,16 +246,32 @@ export default function AddCasePage() {
       }
       const reader = new FileReader();
       reader.onload = () => {
+        resetState();
+        setMediaType("image");
         setSelectedImage(reader.result as string);
-        setMode("image");
-        setMessages([]);
-        setHasGeneratedExplanation(false);
-        setCurrentExplanation("");
-        setCurrentTitle("");
-        setCurrentCategory("");
-        setInputValue("");
       };
       reader.readAsDataURL(file);
+    }
+    if (e.target) {
+      e.target.value = "";
+    }
+  };
+
+  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith("video/")) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select a video file.",
+          variant: "destructive",
+        });
+        return;
+      }
+      resetState();
+      setMediaType("video");
+      setSelectedVideo(file);
+      setSelectedVideoUrl(URL.createObjectURL(file));
     }
     if (e.target) {
       e.target.value = "";
@@ -208,10 +301,13 @@ export default function AddCasePage() {
     }
     
     // Add analyzing message
+    const analyzeMsg = mediaType === "video" 
+      ? "Extracting frames and analyzing the CT scan video..."
+      : "Analyzing the image...";
     setMessages(prev => [...prev, {
       id: `msg-${Date.now()}`,
       role: "ai",
-      content: "Analyzing the image..."
+      content: analyzeMsg
     }]);
     
     setInputValue("");
@@ -220,10 +316,18 @@ export default function AddCasePage() {
     }
     
     handleModeChange("read");
-    analyzeMutation.mutate({
-      imageBase64: selectedImage!,
-      attendingPrompt,
-    });
+    
+    if (mediaType === "video" && selectedVideo) {
+      videoAnalyzeMutation.mutate({
+        video: selectedVideo,
+        attendingPrompt,
+      });
+    } else {
+      analyzeMutation.mutate({
+        imageBase64: selectedImage!,
+        attendingPrompt,
+      });
+    }
   };
 
   const handleSendMessage = () => {
@@ -276,25 +380,47 @@ export default function AddCasePage() {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   };
 
-  // No image selected - show upload prompt
-  if (!selectedImage) {
+  // No media selected - show upload prompt with image and video options
+  const hasMedia = selectedImage || selectedVideoUrl;
+  if (!hasMedia) {
     return (
       <div className="flex flex-col h-full">
         <header className="flex items-center justify-center px-4 h-14 border-b border-border shrink-0">
           <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
         </header>
 
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <Button
-            size="icon"
-            className="w-20 h-20 rounded-full"
-            onClick={handlePlusClick}
-            data-testid="button-add-image"
-          >
-            <Plus className="w-10 h-10" />
-          </Button>
-          <p className="mt-4 text-sm text-muted-foreground">
-            Tap to add an image
+        <div className="flex-1 flex flex-col items-center justify-center gap-6">
+          <div className="flex gap-6">
+            <div className="flex flex-col items-center">
+              <Button
+                size="icon"
+                className="w-16 h-16 rounded-full"
+                onClick={handlePlusClick}
+                data-testid="button-add-image"
+              >
+                <Image className="w-8 h-8" />
+              </Button>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Add Image
+              </p>
+            </div>
+            <div className="flex flex-col items-center">
+              <Button
+                size="icon"
+                variant="secondary"
+                className="w-16 h-16 rounded-full"
+                onClick={handleVideoClick}
+                data-testid="button-add-video"
+              >
+                <Video className="w-8 h-8" />
+              </Button>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Add CT Video
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground text-center max-w-xs">
+            Upload a single image or a short video (10-15 sec) of scrolling through CT slices
           </p>
         </div>
 
@@ -305,6 +431,14 @@ export default function AddCasePage() {
           className="hidden"
           onChange={handleFileSelect}
           data-testid="input-file"
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={handleVideoSelect}
+          data-testid="input-video"
         />
       </div>
     );
@@ -345,11 +479,22 @@ export default function AddCasePage() {
           onTransitionEnd={isImageMode ? handleTransitionEnd : undefined}
         >
           <div className="flex-1 flex flex-col p-4 min-h-0">
-            <CaseImage 
-              src={selectedImage} 
-              alt="Selected case image"
-              fillHeight
-            />
+            {mediaType === "video" && selectedVideoUrl ? (
+              <div className="flex-1 flex items-center justify-center rounded-md overflow-hidden bg-black/5 dark:bg-white/5">
+                <video
+                  src={selectedVideoUrl}
+                  controls
+                  className="max-w-full max-h-full object-contain"
+                  data-testid="video-preview"
+                />
+              </div>
+            ) : (
+              <CaseImage 
+                src={selectedImage} 
+                alt="Selected case image"
+                fillHeight
+              />
+            )}
           </div>
           
           {hasGeneratedExplanation ? (
@@ -370,7 +515,7 @@ export default function AddCasePage() {
                   value={inputValue}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder="Add context about this image (optional)..."
+                  placeholder={mediaType === "video" ? "Add context about this CT video (optional)..." : "Add context about this image (optional)..."}
                   className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2"
                   disabled={isLoading}
                   rows={1}
@@ -386,7 +531,7 @@ export default function AddCasePage() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground text-center mt-2">
-                Tap arrow to analyze with AI
+                {mediaType === "video" ? "Tap arrow to extract frames and analyze with AI" : "Tap arrow to analyze with AI"}
               </p>
             </div>
           )}
@@ -410,19 +555,32 @@ export default function AddCasePage() {
               data-testid="button-thumbnail"
             >
               <div className="flex items-center gap-3">
-                <div className="w-20 h-14 bg-muted border border-border rounded-md overflow-hidden shrink-0">
-                  <img
-                    src={selectedImage}
-                    alt="Case thumbnail"
-                    className="w-full h-full object-contain bg-black/5 dark:bg-white/5"
-                  />
+                <div className="w-20 h-14 bg-muted border border-border rounded-md overflow-hidden shrink-0 relative">
+                  {mediaType === "video" && selectedVideoUrl ? (
+                    <>
+                      <video
+                        src={selectedVideoUrl}
+                        className="w-full h-full object-contain bg-black/5 dark:bg-white/5"
+                        muted
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <Video className="w-5 h-5 text-white" />
+                      </div>
+                    </>
+                  ) : (
+                    <img
+                      src={selectedImage || ""}
+                      alt="Case thumbnail"
+                      className="w-full h-full object-contain bg-black/5 dark:bg-white/5"
+                    />
+                  )}
                 </div>
                 <div className="text-left">
                   <p className="text-sm font-medium" data-testid="text-thumbnail-title">
-                    {currentTitle || "New case image"}
+                    {currentTitle || (mediaType === "video" ? "New CT video case" : "New case image")}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Tap to view image
+                    {mediaType === "video" ? "Tap to view video" : "Tap to view image"}
                   </p>
                 </div>
               </div>
@@ -485,6 +643,14 @@ export default function AddCasePage() {
         className="hidden"
         onChange={handleFileSelect}
         data-testid="input-file"
+      />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={handleVideoSelect}
+        data-testid="input-video-main"
       />
     </div>
   );
