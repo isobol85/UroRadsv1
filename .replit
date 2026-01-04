@@ -45,4 +45,4 @@ integrations = ["javascript_object_storage:2.0.0", "javascript_openai_ai_integra
 [userenv]
 
 [userenv.shared]
-VIDEO_ANALYSIS_MODE = "native"
+VIDEO_ANALYSIS_MODE = "legacy"
