@@ -46,8 +46,8 @@ async function callGeminiVideo(
 
   const parts = [
     {
-      inlineData: {
-        mimeType,
+      inline_data: {
+        mime_type: mimeType,
         data: videoBase64,
       },
     },

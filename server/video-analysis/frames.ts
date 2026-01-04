@@ -131,12 +131,12 @@ async function callGeminiMultiImage(
 
   const url = `${geminiBaseUrl}/models/${GEMINI_MODEL}:generateContent`;
 
-  const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
+  const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
 
   for (const img of images) {
     parts.push({
-      inlineData: {
-        mimeType: img.mimeType,
+      inline_data: {
+        mime_type: img.mimeType,
         data: img.base64,
       },
     });
