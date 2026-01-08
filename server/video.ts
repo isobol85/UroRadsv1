@@ -74,7 +74,7 @@ export async function compressVideo(
     maxSizeMB?: number;
   } = {}
 ): Promise<Buffer> {
-  const { maxSizeMB = 20 } = options;
+  const { maxSizeMB = 50 } = options;
   
   const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ct-compress-"));
   const inputPath = path.join(tempDir, "input.mp4");
@@ -83,21 +83,45 @@ export async function compressVideo(
   try {
     await fs.promises.writeFile(inputPath, videoBuffer);
     
-    // Compress with H.264, CRF 18 for medical quality, movflags for progressive playback
-    await execAsync(
-      `ffmpeg -i "${inputPath}" -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p -movflags +faststart -y "${outputPath}" -hide_banner -loglevel error`
-    );
+    const inputSizeMB = videoBuffer.length / (1024 * 1024);
     
-    const compressedBuffer = await fs.promises.readFile(outputPath);
-    const compressedSizeMB = compressedBuffer.length / (1024 * 1024);
+    // Iterative compression: start with high quality, increase CRF if needed
+    // CRF scale: 18 = high quality, 23 = good, 28 = acceptable for teaching
+    const crfLevels = [18, 20, 23, 26];
     
-    console.log(`Video compressed: ${(videoBuffer.length / (1024 * 1024)).toFixed(2)}MB -> ${compressedSizeMB.toFixed(2)}MB`);
-    
-    if (compressedSizeMB > maxSizeMB) {
-      throw new Error(`Compressed video (${compressedSizeMB.toFixed(2)}MB) exceeds max size of ${maxSizeMB}MB`);
+    for (let i = 0; i < crfLevels.length; i++) {
+      const crf = crfLevels[i];
+      const isLastAttempt = i === crfLevels.length - 1;
+      
+      // Only scale down resolution on final attempt if still too large
+      const scaleFilter = isLastAttempt && inputSizeMB > 50 
+        ? "-vf scale='min(1280,iw)':'-2'" 
+        : "";
+      
+      const ffmpegCmd = `ffmpeg -i "${inputPath}" -c:v libx264 -crf ${crf} -preset slow ${scaleFilter} -pix_fmt yuv420p -movflags +faststart -y "${outputPath}" -hide_banner -loglevel error`;
+      
+      console.log(`Compressing video: ${inputSizeMB.toFixed(2)}MB with CRF ${crf}${scaleFilter ? ' and scaling' : ''} (attempt ${i + 1}/${crfLevels.length})`);
+      
+      await execAsync(ffmpegCmd);
+      
+      const compressedBuffer = await fs.promises.readFile(outputPath);
+      const compressedSizeMB = compressedBuffer.length / (1024 * 1024);
+      
+      console.log(`Video compressed: ${inputSizeMB.toFixed(2)}MB -> ${compressedSizeMB.toFixed(2)}MB`);
+      
+      if (compressedSizeMB <= maxSizeMB) {
+        return compressedBuffer;
+      }
+      
+      if (isLastAttempt) {
+        throw new Error(`Compressed video (${compressedSizeMB.toFixed(2)}MB) exceeds max size of ${maxSizeMB}MB. Please upload a shorter video (10-15 seconds recommended).`);
+      }
+      
+      console.log(`Size still exceeds ${maxSizeMB}MB, trying higher compression...`);
     }
     
-    return compressedBuffer;
+    // Should never reach here, but TypeScript needs a return
+    throw new Error("Compression failed unexpectedly");
   } finally {
     await fs.promises.rm(tempDir, { recursive: true, force: true });
   }
