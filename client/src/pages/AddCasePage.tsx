@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Plus, Send, Loader2, Check, ChevronUp, Image, Video } from "lucide-react";
+import { Upload, Send, Loader2, Check, ChevronUp, Camera, Image, FileUp, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -10,6 +10,13 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 
 interface Message {
   id: string;
@@ -58,10 +65,12 @@ export default function AddCasePage() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const [isUploadDrawerOpen, setIsUploadDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (mode === "read" && scrollRef.current) {
@@ -216,12 +225,19 @@ export default function AddCasePage() {
 
   const videoInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePlusClick = () => {
-    fileInputRef.current?.click();
+  const handleOpenCamera = () => {
+    setIsUploadDrawerOpen(false);
+    setTimeout(() => cameraInputRef.current?.click(), 100);
   };
 
-  const handleVideoClick = () => {
-    videoInputRef.current?.click();
+  const handleUploadMedia = () => {
+    setIsUploadDrawerOpen(false);
+    setTimeout(() => fileInputRef.current?.click(), 100);
+  };
+
+  const handleUploadVideo = () => {
+    setIsUploadDrawerOpen(false);
+    setTimeout(() => videoInputRef.current?.click(), 100);
   };
 
   const resetState = () => {
@@ -389,7 +405,7 @@ export default function AddCasePage() {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   };
 
-  // No media selected - show upload prompt with image and video options
+  // No media selected - show single upload button with options drawer
   const hasMedia = selectedImage || selectedVideoUrl;
   if (!hasMedia) {
     return (
@@ -398,41 +414,80 @@ export default function AddCasePage() {
           <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
         </header>
 
-        <div className="flex-1 flex flex-col items-center justify-center gap-6">
-          <div className="flex gap-6">
-            <div className="flex flex-col items-center">
-              <Button
-                size="icon"
-                className="w-16 h-16 rounded-full"
-                onClick={handlePlusClick}
-                data-testid="button-add-image"
-              >
-                <Image className="w-8 h-8" />
-              </Button>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Add Image
-              </p>
-            </div>
-            <div className="flex flex-col items-center">
-              <Button
-                size="icon"
-                variant="secondary"
-                className="w-16 h-16 rounded-full"
-                onClick={handleVideoClick}
-                data-testid="button-add-video"
-              >
-                <Video className="w-8 h-8" />
-              </Button>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Add CT Video
-              </p>
-            </div>
-          </div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
+          <Button
+            size="lg"
+            className="w-full max-w-xs h-14 text-base gap-3"
+            onClick={() => setIsUploadDrawerOpen(true)}
+            data-testid="button-upload"
+          >
+            <Upload className="w-5 h-5" />
+            Upload Case
+          </Button>
           <p className="text-xs text-muted-foreground text-center max-w-xs">
-            Upload a single image or a short video (10-15 sec) of scrolling through CT slices
+            Add an image or CT video to create a teaching case
           </p>
         </div>
 
+        <Drawer open={isUploadDrawerOpen} onOpenChange={setIsUploadDrawerOpen}>
+          <DrawerContent>
+            <DrawerHeader className="pb-2">
+              <DrawerTitle>Choose upload method</DrawerTitle>
+            </DrawerHeader>
+            <div className="flex flex-col gap-3 p-4 pt-0">
+              <DrawerClose asChild>
+                <Button
+                  variant="outline"
+                  className="w-full h-14 justify-start gap-4 text-base"
+                  onClick={handleOpenCamera}
+                  data-testid="button-open-camera"
+                >
+                  <Camera className="w-6 h-6" />
+                  Open Camera
+                </Button>
+              </DrawerClose>
+              <DrawerClose asChild>
+                <Button
+                  variant="outline"
+                  className="w-full h-14 justify-start gap-4 text-base"
+                  onClick={handleUploadMedia}
+                  data-testid="button-upload-image"
+                >
+                  <Image className="w-6 h-6" />
+                  Upload Photo
+                </Button>
+              </DrawerClose>
+              <DrawerClose asChild>
+                <Button
+                  variant="outline"
+                  className="w-full h-14 justify-start gap-4 text-base"
+                  onClick={handleUploadVideo}
+                  data-testid="button-upload-video"
+                >
+                  <FileUp className="w-6 h-6" />
+                  Upload CT Video
+                </Button>
+              </DrawerClose>
+            </div>
+            <div className="p-4 pt-0">
+              <DrawerClose asChild>
+                <Button variant="ghost" className="w-full" data-testid="button-cancel-upload">
+                  Cancel
+                </Button>
+              </DrawerClose>
+            </div>
+          </DrawerContent>
+        </Drawer>
+
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleFileSelect}
+          data-testid="input-camera"
+        />
         <input
           ref={fileInputRef}
           type="file"
