@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Plus, Send, Loader2, Check, ChevronUp, Image, Video } from "lucide-react";
+import { Upload, Send, Loader2, Check, ChevronUp, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -214,14 +214,8 @@ export default function AddCasePage() {
   const isLoading = analyzeMutation.isPending || refineMutation.isPending || videoAnalyzeMutation.isPending;
   const isSubmitting = submitMutation.isPending;
 
-  const videoInputRef = useRef<HTMLInputElement>(null);
-
-  const handlePlusClick = () => {
+  const handleUploadClick = () => {
     fileInputRef.current?.click();
-  };
-
-  const handleVideoClick = () => {
-    videoInputRef.current?.click();
   };
 
   const resetState = () => {
@@ -245,42 +239,27 @@ export default function AddCasePage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (!file.type.startsWith("image/")) {
-        toast({
-          title: "Invalid file type",
-          description: "Please select an image file.",
-          variant: "destructive",
-        });
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          resetState();
+          setMediaType("image");
+          setSelectedImage(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      } else if (file.type.startsWith("video/")) {
         resetState();
-        setMediaType("image");
-        setSelectedImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-    if (e.target) {
-      e.target.value = "";
-    }
-  };
-
-  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith("video/")) {
+        setMediaType("video");
+        setSelectedVideo(file);
+        setSelectedVideoUrl(URL.createObjectURL(file));
+      } else {
         toast({
           title: "Invalid file type",
-          description: "Please select a video file.",
+          description: "Please select an image or video file.",
           variant: "destructive",
         });
         return;
       }
-      resetState();
-      setMediaType("video");
-      setSelectedVideo(file);
-      setSelectedVideoUrl(URL.createObjectURL(file));
     }
     if (e.target) {
       e.target.value = "";
@@ -398,56 +377,28 @@ export default function AddCasePage() {
           <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
         </header>
 
-        <div className="flex-1 flex flex-col items-center justify-center gap-6">
-          <div className="flex gap-6">
-            <div className="flex flex-col items-center">
-              <Button
-                size="icon"
-                className="w-16 h-16 rounded-full"
-                onClick={handlePlusClick}
-                data-testid="button-add-image"
-              >
-                <Image className="w-8 h-8" />
-              </Button>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Add Image
-              </p>
-            </div>
-            <div className="flex flex-col items-center">
-              <Button
-                size="icon"
-                variant="secondary"
-                className="w-16 h-16 rounded-full"
-                onClick={handleVideoClick}
-                data-testid="button-add-video"
-              >
-                <Video className="w-8 h-8" />
-              </Button>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Add CT Video
-              </p>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground text-center max-w-xs">
-            Upload a single image or a short video (10-15 sec) of scrolling through CT slices
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
+          <Button
+            size="lg"
+            className="w-full max-w-xs h-14 text-base gap-2"
+            onClick={handleUploadClick}
+            data-testid="button-upload"
+          >
+            <Upload className="w-5 h-5" />
+            Upload
+          </Button>
+          <p className="text-sm text-muted-foreground text-center max-w-xs">
+            Upload an image or a short video (10-15 sec) of scrolling through CT slices
           </p>
         </div>
 
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           className="hidden"
           onChange={handleFileSelect}
           data-testid="input-file"
-        />
-        <input
-          ref={videoInputRef}
-          type="file"
-          accept="video/*"
-          className="hidden"
-          onChange={handleVideoSelect}
-          data-testid="input-video"
         />
       </div>
     );
@@ -648,18 +599,10 @@ export default function AddCasePage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/*"
         className="hidden"
         onChange={handleFileSelect}
         data-testid="input-file"
-      />
-      <input
-        ref={videoInputRef}
-        type="file"
-        accept="video/*"
-        className="hidden"
-        onChange={handleVideoSelect}
-        data-testid="input-video-main"
       />
     </div>
   );
