@@ -9,6 +9,7 @@ import { z } from "zod";
 import multer from "multer";
 import { objectStorageClient } from "./replit_integrations/object_storage";
 import { randomUUID } from "crypto";
+import seedData from "./seed-data.json";
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -353,6 +354,48 @@ export async function registerRoutes(
         error: "Failed to get video info",
         details: error instanceof Error ? error.message : "Unknown error"
       });
+    }
+  });
+
+  // Seed endpoint - populates database with initial case data
+  app.post("/api/seed", async (req, res) => {
+    try {
+      const existingCases = await storage.getCases();
+      
+      if (existingCases.length > 0) {
+        return res.json({ 
+          message: "Database already has cases", 
+          existingCount: existingCases.length,
+          seeded: 0 
+        });
+      }
+
+      let seededCount = 0;
+      for (const caseData of seedData as any[]) {
+        try {
+          await storage.createCase({
+            title: caseData.title,
+            imageUrl: caseData.imageUrl,
+            explanation: caseData.explanation,
+            category: caseData.category,
+            attendingPrompt: caseData.attendingPrompt || null,
+            videoUrl: caseData.videoUrl || null,
+            mediaType: caseData.mediaType || "image",
+          });
+          seededCount++;
+        } catch (err) {
+          console.error("Error seeding case:", caseData.title, err);
+        }
+      }
+
+      res.json({ 
+        message: "Database seeded successfully", 
+        seeded: seededCount,
+        total: (seedData as any[]).length
+      });
+    } catch (error) {
+      console.error("Error seeding database:", error);
+      res.status(500).json({ error: "Failed to seed database" });
     }
   });
 
