@@ -18,13 +18,19 @@ const upload = multer({
 
 // Upload video to object storage and return the public URL
 async function uploadVideoToStorage(videoBuffer: Buffer, filename: string): Promise<string> {
-  const privateDir = process.env.PRIVATE_OBJECT_DIR;
-  if (!privateDir) {
-    throw new Error("PRIVATE_OBJECT_DIR not set");
+  const publicSearchPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS;
+  if (!publicSearchPaths) {
+    throw new Error("PUBLIC_OBJECT_SEARCH_PATHS not set");
+  }
+  
+  // PUBLIC_OBJECT_SEARCH_PATHS is a plain path like "/bucket/public"
+  const publicDir = publicSearchPaths.trim();
+  if (!publicDir) {
+    throw new Error("No public directories configured");
   }
   
   const objectId = `videos/${randomUUID()}-${filename}`;
-  const fullPath = `${privateDir}/${objectId}`;
+  const fullPath = `${publicDir}/${objectId}`;
   
   // Parse bucket and object name from path
   const pathParts = fullPath.split("/").filter(p => p.length > 0);
