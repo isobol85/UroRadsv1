@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertCaseSchema, insertChatMessageSchema } from "@shared/schema";
 import { generateExplanation, generateTitle, generateCategory, generateChatResponse, refineExplanation, testMultiImageCapability } from "./ai";
 import { getVideoInfo, compressVideo } from "./video";
-import { analyzeVideo, streamGeminiVideo, prepareStreamingAnalysis, extractSingleFrame } from "./video-analysis";
+import { analyzeVideo } from "./video-analysis";
 import { z } from "zod";
 import multer from "multer";
 import { objectStorageClient } from "./replit_integrations/object_storage";
@@ -330,8 +330,9 @@ export async function registerRoutes(
       const attendingPrompt = req.body.attendingPrompt;
       const filename = req.file.originalname || "video.mp4";
       const videoBuffer = req.file.buffer;
+      const sizeMB = (videoBuffer.length / (1024 * 1024)).toFixed(2);
 
-      console.log(`[STREAM] Processing video: ${filename}, size: ${req.file.size} bytes`);
+      console.log(`[STREAM] Processing video: ${filename}, size: ${sizeMB}MB`);
 
       // Set up SSE headers
       res.setHeader("Content-Type", "text/event-stream");
@@ -346,24 +347,14 @@ export async function registerRoutes(
       const videoInfo = await getVideoInfo(videoBuffer);
       console.log(`[STREAM] Video info: duration=${videoInfo.duration}s, ${videoInfo.width}x${videoInfo.height}, ${videoInfo.fps}fps`);
 
-      res.write(`event: status\ndata: ${JSON.stringify({ status: "analyzing", message: "Sending to AI for analysis..." })}\n\n`);
+      // Use the unified analyzeVideo function which respects VIDEO_ANALYSIS_MODE
+      // This will use frame extraction in legacy mode (default) or native with fallback
+      res.write(`event: status\ndata: ${JSON.stringify({ status: "analyzing", message: "Extracting frames and analyzing the CT scan video..." })}\n\n`);
 
-      // Prepare for streaming analysis
-      const context = prepareStreamingAnalysis(videoBuffer, filename, attendingPrompt);
+      const analysisResult = await analyzeVideo(videoBuffer, filename, attendingPrompt);
+      const fullExplanation = analysisResult.explanation;
 
-      // Stream the analysis
-      let fullExplanation = "";
-      try {
-        for await (const chunk of streamGeminiVideo(context.prompt, context.videoBase64, context.mimeType)) {
-          fullExplanation += chunk;
-          res.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
-        }
-      } catch (streamError) {
-        console.error("[STREAM] Streaming error:", streamError);
-        res.write(`event: error\ndata: ${JSON.stringify({ error: "Streaming failed", details: streamError instanceof Error ? streamError.message : "Unknown error" })}\n\n`);
-        res.end();
-        return;
-      }
+      console.log(`[STREAM] Analysis complete using ${analysisResult.strategy} strategy`);
 
       // Generate title and category from the full explanation
       res.write(`event: status\ndata: ${JSON.stringify({ status: "finalizing", message: "Generating metadata..." })}\n\n`);
@@ -372,10 +363,6 @@ export async function registerRoutes(
         generateTitle(fullExplanation),
         generateCategory(fullExplanation),
       ]);
-
-      // Extract thumbnail
-      const thumbnailFrame = await extractSingleFrame(videoBuffer, 0.3);
-      const thumbnail = `data:${thumbnailFrame.mimeType};base64,${thumbnailFrame.base64}`;
 
       // Compress and upload video
       res.write(`event: status\ndata: ${JSON.stringify({ status: "uploading", message: "Uploading video..." })}\n\n`);
@@ -393,8 +380,8 @@ export async function registerRoutes(
         title,
         category,
         videoInfo,
-        analysisStrategy: "native",
-        thumbnail,
+        analysisStrategy: analysisResult.strategy,
+        thumbnail: analysisResult.thumbnail,
         videoUrl,
         mediaType: "video",
       })}\n\n`);
