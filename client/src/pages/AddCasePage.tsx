@@ -39,6 +39,12 @@ interface VideoAnalyzeResponse {
   mediaType: "video";
 }
 
+interface StreamingState {
+  isStreaming: boolean;
+  streamedText: string;
+  statusMessage: string;
+}
+
 type ViewMode = "image" | "read";
 type MediaType = "image" | "video";
 
@@ -57,7 +63,13 @@ export default function AddCasePage() {
   const [mode, setMode] = useState<ViewMode>("image");
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [streamingState, setStreamingState] = useState<StreamingState>({
+    isStreaming: false,
+    streamedText: "",
+    statusMessage: "",
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -112,42 +124,182 @@ export default function AddCasePage() {
     },
   });
 
-  const videoAnalyzeMutation = useMutation({
-    mutationFn: async (data: { video: File; attendingPrompt?: string }) => {
-      const formData = new FormData();
-      formData.append("video", data.video);
-      if (data.attendingPrompt) {
-        formData.append("attendingPrompt", data.attendingPrompt);
-      }
-      const response = await fetch("/api/ai/analyze-video", {
+  const startStreamingAnalysis = async (video: File, attendingPrompt?: string) => {
+    const formData = new FormData();
+    formData.append("video", video);
+    if (attendingPrompt) {
+      formData.append("attendingPrompt", attendingPrompt);
+    }
+
+    abortControllerRef.current = new AbortController();
+    
+    setStreamingState({
+      isStreaming: true,
+      streamedText: "",
+      statusMessage: "Uploading video...",
+    });
+
+    try {
+      const response = await fetch("/api/ai/analyze-video-stream", {
         method: "POST",
         body: formData,
         credentials: "include",
+        signal: abortControllerRef.current.signal,
       });
+
       if (!response.ok) {
         throw new Error("Video analysis failed");
       }
-      return response.json() as Promise<VideoAnalyzeResponse>;
-    },
-    onSuccess: (data) => {
-      setCurrentExplanation(data.explanation);
-      setCurrentTitle(data.title);
-      setCurrentCategory(data.category);
-      setSelectedImage(data.thumbnail);
-      setStoredVideoUrl(data.videoUrl);
-      setHasGeneratedExplanation(true);
-      setMessages(prev => [...prev, {
-        id: `msg-${Date.now()}`,
-        role: "ai",
-        content: `Here's the AI-generated explanation from your ${data.framesExtracted}-frame CT scan video (${data.videoInfo.duration}s):\n\n${data.explanation}\n\nWould you like me to refine any part of this explanation?`
-      }]);
-    },
-    onError: () => {
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullText = "";
+
+      const processEvent = (eventType: string, dataStr: string) => {
+        if (!dataStr) return;
+        
+        try {
+          const data = JSON.parse(dataStr);
+          
+          if (eventType === "status" && data.status) {
+            setStreamingState(prev => ({
+              ...prev,
+              statusMessage: data.message || data.status,
+            }));
+          }
+          
+          if (eventType === "chunk" && data.text) {
+            fullText += data.text;
+            setStreamingState(prev => ({
+              ...prev,
+              streamedText: fullText,
+              statusMessage: "",
+            }));
+          }
+          
+          if (eventType === "complete" && data.explanation !== undefined) {
+            setCurrentExplanation(data.explanation);
+            setCurrentTitle(data.title);
+            setCurrentCategory(data.category);
+            setSelectedImage(data.thumbnail);
+            setStoredVideoUrl(data.videoUrl);
+            setHasGeneratedExplanation(true);
+            
+            setMessages(prev => {
+              const filtered = prev.filter(m => m.id !== "streaming-msg");
+              return [...filtered, {
+                id: `msg-${Date.now()}`,
+                role: "ai",
+                content: `Here's the AI-generated explanation from your CT scan video (${data.videoInfo?.duration || 0}s):\n\n${data.explanation}\n\nWould you like me to refine any part of this explanation?`
+              }];
+            });
+            
+            setStreamingState({
+              isStreaming: false,
+              streamedText: "",
+              statusMessage: "",
+            });
+          }
+          
+          if (eventType === "error" && data.error) {
+            throw new Error(data.details || data.error);
+          }
+        } catch (e) {
+          if (e instanceof SyntaxError) {
+            return;
+          }
+          throw e;
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+
+        for (const eventBlock of events) {
+          if (!eventBlock.trim()) continue;
+          
+          const lines = eventBlock.split("\n");
+          let eventType = "message";
+          let dataLines: string[] = [];
+          
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              dataLines.push(line.slice(6));
+            }
+          }
+          
+          if (dataLines.length > 0) {
+            const dataStr = dataLines.join("\n").trim();
+            processEvent(eventType, dataStr);
+          }
+        }
+      }
+
+      if (buffer.trim()) {
+        const lines = buffer.split("\n");
+        let eventType = "message";
+        let dataLines: string[] = [];
+        
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            dataLines.push(line.slice(6));
+          }
+        }
+        
+        if (dataLines.length > 0) {
+          const dataStr = dataLines.join("\n").trim();
+          processEvent(eventType, dataStr);
+        }
+      }
+
+      setStreamingState(prev => {
+        if (prev.isStreaming) {
+          return {
+            isStreaming: false,
+            streamedText: "",
+            statusMessage: "",
+          };
+        }
+        return prev;
+      });
+    } catch (error) {
+      if ((error as Error).name === "AbortError") {
+        return;
+      }
+      
+      setStreamingState({
+        isStreaming: false,
+        streamedText: "",
+        statusMessage: "",
+      });
+      
       toast({
         title: "Video analysis failed",
-        description: "Could not analyze the video. Please try again.",
+        description: error instanceof Error ? error.message : "Could not analyze the video. Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  const videoAnalyzeMutation = useMutation({
+    mutationFn: async (data: { video: File; attendingPrompt?: string }) => {
+      await startStreamingAnalysis(data.video, data.attendingPrompt);
+      return null;
     },
   });
 
@@ -211,7 +363,7 @@ export default function AddCasePage() {
     },
   });
 
-  const isLoading = analyzeMutation.isPending || refineMutation.isPending || videoAnalyzeMutation.isPending;
+  const isLoading = analyzeMutation.isPending || refineMutation.isPending || videoAnalyzeMutation.isPending || streamingState.isStreaming;
   const isSubmitting = submitMutation.isPending;
 
   const handleUploadClick = () => {
@@ -557,7 +709,27 @@ export default function AddCasePage() {
                 />
               ))}
 
-              {isLoading && (
+              {streamingState.isStreaming && streamingState.streamedText && (
+                <div className="flex justify-start" data-testid="chat-streaming">
+                  <div className="bg-muted rounded-2xl rounded-tl-sm p-4 max-w-[85%]">
+                    <p className="text-sm whitespace-pre-wrap">{streamingState.streamedText}</p>
+                    <span className="inline-block w-1.5 h-4 bg-foreground/70 animate-pulse ml-0.5" />
+                  </div>
+                </div>
+              )}
+
+              {streamingState.isStreaming && !streamingState.streamedText && streamingState.statusMessage && (
+                <div className="flex justify-start" data-testid="chat-status">
+                  <div className="bg-muted rounded-2xl rounded-tl-sm p-4">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">{streamingState.statusMessage}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isLoading && !streamingState.streamedText && !streamingState.statusMessage && (
                 <div className="flex justify-start" data-testid="chat-loading">
                   <div className="bg-muted rounded-2xl rounded-tl-sm p-4">
                     <div className="flex gap-1">

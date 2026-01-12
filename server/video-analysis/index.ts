@@ -68,3 +68,4 @@ export async function analyzeVideo(
 }
 
 export { extractSingleFrame, extractFramesFromVideo } from "./frames";
+export { streamGeminiVideo, prepareStreamingAnalysis, type StreamingVideoAnalysisContext } from "./native";

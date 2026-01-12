@@ -76,6 +76,96 @@ async function callGeminiVideo(
   return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
+export async function* streamGeminiVideo(
+  textPrompt: string,
+  videoBase64: string,
+  mimeType: string
+): AsyncGenerator<string, void, unknown> {
+  if (!geminiApiKey || !geminiBaseUrl) {
+    throw new Error("Gemini AI integration not configured");
+  }
+
+  const url = `${geminiBaseUrl}/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse`;
+
+  const parts = [
+    {
+      inline_data: {
+        mime_type: mimeType,
+        data: videoBase64,
+      },
+    },
+    { text: textPrompt },
+  ];
+
+  console.log(`[NATIVE VIDEO STREAM] Sending video to Gemini for streaming (${(videoBase64.length * 0.75 / 1024 / 1024).toFixed(2)}MB)`);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${geminiApiKey}`,
+    },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+  }
+
+  if (!response.body) {
+    throw new Error("No response body for streaming");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr && jsonStr !== "[DONE]") {
+          try {
+            const data = JSON.parse(jsonStr);
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              yield text;
+            }
+          } catch (e) {
+            // Skip malformed JSON chunks
+          }
+        }
+      }
+    }
+  }
+
+  // Process any remaining buffer
+  if (buffer.startsWith("data: ")) {
+    const jsonStr = buffer.slice(6).trim();
+    if (jsonStr && jsonStr !== "[DONE]") {
+      try {
+        const data = JSON.parse(jsonStr);
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          yield text;
+        }
+      } catch (e) {
+        // Skip malformed JSON
+      }
+    }
+  }
+}
+
 export const nativeVideoStrategy: VideoAnalysisStrategy = {
   name: "native",
 
@@ -117,3 +207,33 @@ export const nativeVideoStrategy: VideoAnalysisStrategy = {
     };
   },
 };
+
+export interface StreamingVideoAnalysisContext {
+  videoBase64: string;
+  mimeType: string;
+  prompt: string;
+}
+
+export function prepareStreamingAnalysis(
+  videoBuffer: Buffer,
+  filename: string,
+  attendingPrompt?: string
+): StreamingVideoAnalysisContext {
+  const sizeMB = videoBuffer.length / (1024 * 1024);
+  console.log(`[NATIVE VIDEO STREAM] Preparing video: ${filename} (${sizeMB.toFixed(2)}MB)`);
+
+  if (sizeMB > MAX_INLINE_SIZE_MB) {
+    throw new Error(`Video too large for native analysis (${sizeMB.toFixed(2)}MB > ${MAX_INLINE_SIZE_MB}MB)`);
+  }
+
+  const videoBase64 = videoBuffer.toString("base64");
+  const mimeType = getMimeType(filename);
+
+  const prompt = attendingPrompt
+    ? `${SYSTEM_PROMPT_VIDEO_ANALYSIS}\n\nAdditional guidance from the attending: ${attendingPrompt}`
+    : SYSTEM_PROMPT_VIDEO_ANALYSIS;
+
+  return { videoBase64, mimeType, prompt };
+}
+
+export { extractSingleFrame } from "./frames";

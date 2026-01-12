@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertCaseSchema, insertChatMessageSchema } from "@shared/schema";
 import { generateExplanation, generateTitle, generateCategory, generateChatResponse, refineExplanation, testMultiImageCapability } from "./ai";
 import { getVideoInfo, compressVideo } from "./video";
-import { analyzeVideo } from "./video-analysis";
+import { analyzeVideo, streamGeminiVideo, prepareStreamingAnalysis, extractSingleFrame } from "./video-analysis";
 import { z } from "zod";
 import multer from "multer";
 import { objectStorageClient } from "./replit_integrations/object_storage";
@@ -317,6 +317,106 @@ export async function registerRoutes(
         error: "Failed to analyze video",
         details: error instanceof Error ? error.message : "Unknown error"
       });
+    }
+  });
+
+  // Streaming video analysis endpoint using SSE
+  app.post("/api/ai/analyze-video-stream", upload.single("video"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file uploaded" });
+      }
+
+      const attendingPrompt = req.body.attendingPrompt;
+      const filename = req.file.originalname || "video.mp4";
+      const videoBuffer = req.file.buffer;
+
+      console.log(`[STREAM] Processing video: ${filename}, size: ${req.file.size} bytes`);
+
+      // Set up SSE headers
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+
+      // Send initial event to indicate processing has started
+      res.write(`event: status\ndata: ${JSON.stringify({ status: "processing", message: "Preparing video for analysis..." })}\n\n`);
+
+      // Get video info
+      const videoInfo = await getVideoInfo(videoBuffer);
+      console.log(`[STREAM] Video info: duration=${videoInfo.duration}s, ${videoInfo.width}x${videoInfo.height}, ${videoInfo.fps}fps`);
+
+      res.write(`event: status\ndata: ${JSON.stringify({ status: "analyzing", message: "Sending to AI for analysis..." })}\n\n`);
+
+      // Prepare for streaming analysis
+      const context = prepareStreamingAnalysis(videoBuffer, filename, attendingPrompt);
+
+      // Stream the analysis
+      let fullExplanation = "";
+      try {
+        for await (const chunk of streamGeminiVideo(context.prompt, context.videoBase64, context.mimeType)) {
+          fullExplanation += chunk;
+          res.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+        }
+      } catch (streamError) {
+        console.error("[STREAM] Streaming error:", streamError);
+        res.write(`event: error\ndata: ${JSON.stringify({ error: "Streaming failed", details: streamError instanceof Error ? streamError.message : "Unknown error" })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // Generate title and category from the full explanation
+      res.write(`event: status\ndata: ${JSON.stringify({ status: "finalizing", message: "Generating metadata..." })}\n\n`);
+
+      const [title, category] = await Promise.all([
+        generateTitle(fullExplanation),
+        generateCategory(fullExplanation),
+      ]);
+
+      // Extract thumbnail
+      const thumbnailFrame = await extractSingleFrame(videoBuffer, 0.3);
+      const thumbnail = `data:${thumbnailFrame.mimeType};base64,${thumbnailFrame.base64}`;
+
+      // Compress and upload video
+      res.write(`event: status\ndata: ${JSON.stringify({ status: "uploading", message: "Uploading video..." })}\n\n`);
+      
+      console.log("[STREAM] Compressing video for storage...");
+      const compressedVideo = await compressVideo(videoBuffer);
+      
+      console.log("[STREAM] Uploading compressed video to object storage...");
+      const videoUrl = await uploadVideoToStorage(compressedVideo, filename);
+      console.log(`[STREAM] Video uploaded: ${videoUrl}`);
+
+      // Send final complete event with all metadata
+      res.write(`event: complete\ndata: ${JSON.stringify({
+        explanation: fullExplanation,
+        title,
+        category,
+        videoInfo,
+        analysisStrategy: "native",
+        thumbnail,
+        videoUrl,
+        mediaType: "video",
+      })}\n\n`);
+
+      res.end();
+    } catch (error) {
+      console.error("[STREAM] Error analyzing video:", error);
+      
+      // If headers haven't been sent, send JSON error
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          error: "Failed to analyze video",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
+      } else {
+        // Headers already sent (SSE started), send error event
+        res.write(`event: error\ndata: ${JSON.stringify({ 
+          error: "Failed to analyze video",
+          details: error instanceof Error ? error.message : "Unknown error"
+        })}\n\n`);
+        res.end();
+      }
     }
   });
 
