@@ -363,8 +363,8 @@ export async function registerRoutes(
     }
   });
 
-  // Generate signed URL for video access
-  app.get("/api/videos/:caseId/signed-url", async (req, res) => {
+  // Stream video content through the server (proxy)
+  app.get("/api/videos/:caseId/stream", async (req, res) => {
     try {
       const case_ = await storage.getCase(req.params.caseId);
       if (!case_) {
@@ -383,16 +383,67 @@ export async function registerRoutes(
       const bucket = objectStorageClient.bucket(bucketName);
       const file = bucket.file(objectName);
 
-      // Generate signed URL valid for 1 hour
-      const [signedUrl] = await file.getSignedUrl({
-        action: "read",
-        expires: Date.now() + 60 * 60 * 1000, // 1 hour
-      });
+      // Check if file exists
+      const [exists] = await file.exists();
+      if (!exists) {
+        return res.status(404).json({ error: "Video file not found" });
+      }
 
-      res.json({ signedUrl });
+      // Get file metadata for content type and size
+      const [metadata] = await file.getMetadata();
+      const contentType = metadata.contentType || "video/mp4";
+      const fileSize = parseInt(metadata.size as string, 10);
+
+      // Handle range requests for video seeking
+      const range = req.headers.range;
+      if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+        // Validate range
+        if (isNaN(start) || start < 0 || start >= fileSize || end >= fileSize || start > end) {
+          res.status(416).set({ "Content-Range": `bytes */${fileSize}` }).end();
+          return;
+        }
+
+        const chunkSize = end - start + 1;
+
+        res.status(206);
+        res.set({
+          "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunkSize,
+          "Content-Type": contentType,
+        });
+
+        const stream = file.createReadStream({ start, end });
+        stream.on("error", (err) => {
+          console.error("Stream error:", err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: "Stream error" });
+          }
+        });
+        stream.pipe(res);
+      } else {
+        res.set({
+          "Content-Length": fileSize,
+          "Content-Type": contentType,
+          "Accept-Ranges": "bytes",
+        });
+
+        const stream = file.createReadStream();
+        stream.on("error", (err) => {
+          console.error("Stream error:", err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: "Stream error" });
+          }
+        });
+        stream.pipe(res);
+      }
     } catch (error) {
-      console.error("Error generating signed URL:", error);
-      res.status(500).json({ error: "Failed to generate video URL" });
+      console.error("Error streaming video:", error);
+      res.status(500).json({ error: "Failed to stream video" });
     }
   });
 

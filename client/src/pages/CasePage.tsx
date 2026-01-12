@@ -242,7 +242,7 @@ export default function CasePage() {
             {currentCase.mediaType === "video" && currentCase.videoUrl ? (
               <div className="flex-1 flex items-center justify-center rounded-md overflow-hidden bg-black/5 dark:bg-white/5">
                 <video
-                  src={currentCase.videoUrl}
+                  src={`/api/videos/${currentCase.id}/stream`}
                   controls
                   preload="metadata"
                   poster={currentCase.imageUrl}
