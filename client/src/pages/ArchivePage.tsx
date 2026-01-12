@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { FolderOpen, Loader2, Trash2, Pencil } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/EmptyState";
+import { LoadingPearls } from "@/components/LoadingPearls";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -211,7 +212,7 @@ export default function ArchivePage() {
           <h1 className="text-lg font-semibold" data-testid="text-archive-title">Archive</h1>
         </header>
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <LoadingPearls />
         </div>
       </div>
     );

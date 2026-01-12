@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CaseImage } from "@/components/CaseImage";
 import { ChatBubble } from "@/components/ChatBubble";
+import { LoadingPearls } from "@/components/LoadingPearls";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -198,7 +199,7 @@ export default function EditCasePage() {
           <h1 className="text-lg font-semibold" data-testid="text-edit-title">Edit Case</h1>
         </header>
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <LoadingPearls />
         </div>
       </div>
     );
