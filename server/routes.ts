@@ -363,6 +363,39 @@ export async function registerRoutes(
     }
   });
 
+  // Generate signed URL for video access
+  app.get("/api/videos/:caseId/signed-url", async (req, res) => {
+    try {
+      const case_ = await storage.getCase(req.params.caseId);
+      if (!case_) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+      if (!case_.videoUrl) {
+        return res.status(404).json({ error: "No video for this case" });
+      }
+
+      // Parse bucket and object name from the stored URL
+      const url = new URL(case_.videoUrl);
+      const pathParts = url.pathname.split("/").filter(p => p.length > 0);
+      const bucketName = pathParts[0];
+      const objectName = pathParts.slice(1).join("/");
+
+      const bucket = objectStorageClient.bucket(bucketName);
+      const file = bucket.file(objectName);
+
+      // Generate signed URL valid for 1 hour
+      const [signedUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 60 * 60 * 1000, // 1 hour
+      });
+
+      res.json({ signedUrl });
+    } catch (error) {
+      console.error("Error generating signed URL:", error);
+      res.status(500).json({ error: "Failed to generate video URL" });
+    }
+  });
+
   // Seed endpoint - populates database with initial case data
   app.post("/api/seed", async (req, res) => {
     try {
