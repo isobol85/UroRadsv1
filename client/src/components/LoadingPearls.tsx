@@ -208,6 +208,34 @@ const RADIOLOGY_PEARLS = [
 
 const CYCLE_INTERVAL_MS = 9000;
 
+// Map status messages from Gemini API to progress percentages
+const STATUS_TO_PROGRESS: Record<string, number> = {
+  "processing": 10,
+  "Preparing video for analysis...": 10,
+  "analyzing": 40,
+  "Analyzing video with AI...": 40,
+  "finalizing": 75,
+  "Generating metadata...": 75,
+  "uploading": 90,
+  "Uploading video...": 90,
+  "complete": 100,
+};
+
+function getProgressFromStatus(status: string): number | null {
+  // Check for exact match first
+  if (STATUS_TO_PROGRESS[status] !== undefined) {
+    return STATUS_TO_PROGRESS[status];
+  }
+  // Check for partial matches (case-insensitive)
+  const lowerStatus = status.toLowerCase();
+  if (lowerStatus.includes("preparing") || lowerStatus.includes("processing")) return 10;
+  if (lowerStatus.includes("analyzing") || lowerStatus.includes("analysis")) return 40;
+  if (lowerStatus.includes("generating") || lowerStatus.includes("finalizing")) return 75;
+  if (lowerStatus.includes("uploading") || lowerStatus.includes("saving")) return 90;
+  if (lowerStatus.includes("complete") || lowerStatus.includes("done")) return 100;
+  return null;
+}
+
 // Version configurations - add new versions here
 const VERSION_CONFIG = {
   1: {
@@ -228,23 +256,66 @@ type VersionNumber = keyof typeof VERSION_CONFIG;
 interface LoadingPearlsProps {
   className?: string;
   statusMessage?: string;
+  displayMessage?: string;
   progress?: number;
   version?: VersionNumber;
 }
 
 export function LoadingPearls({ 
   className = "", 
-  statusMessage = "Analyzing DICOM Data", 
+  statusMessage = "processing",
+  displayMessage,
   progress,
   version = 1 
 }: LoadingPearlsProps) {
+  // Display message shown to user (human-readable)
+  const shownMessage = displayMessage || statusMessage || "Analyzing DICOM Data";
   const [currentIndex, setCurrentIndex] = useState(() => 
     Math.floor(Math.random() * RADIOLOGY_PEARLS.length)
   );
   const [isVisible, setIsVisible] = useState(true);
-  const [fakeProgress, setFakeProgress] = useState(0);
+  const [smoothProgress, setSmoothProgress] = useState(0);
+  const [targetProgress, setTargetProgress] = useState(0);
 
   const config = VERSION_CONFIG[version] || VERSION_CONFIG[1];
+
+  // Determine target progress from status message or explicit progress prop
+  useEffect(() => {
+    if (progress !== undefined) {
+      setTargetProgress(progress);
+      // Snap to 100% immediately for completion
+      if (progress >= 100) {
+        setSmoothProgress(100);
+      }
+      return;
+    }
+    
+    const statusProgress = getProgressFromStatus(statusMessage);
+    if (statusProgress !== null) {
+      setTargetProgress(statusProgress);
+      // Snap to 100% immediately for completion - no animation delay
+      if (statusProgress >= 100) {
+        setSmoothProgress(100);
+      }
+    }
+  }, [progress, statusMessage]);
+
+  // Smoothly animate progress toward target (except for 100% which snaps)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSmoothProgress((prev) => {
+        if (prev >= targetProgress) return prev;
+        // For completion, we've already snapped to 100
+        if (targetProgress >= 100) return 100;
+        // Gradually move toward target, faster when further away
+        const diff = targetProgress - prev;
+        const increment = Math.max(1, diff * 0.15);
+        return Math.min(prev + increment, targetProgress);
+      });
+    }, 100);
+    
+    return () => clearInterval(timer);
+  }, [targetProgress]);
 
   useEffect(() => {
     let fadeOutTimer: ReturnType<typeof setTimeout>;
@@ -270,22 +341,8 @@ export function LoadingPearls({
     };
   }, []);
 
-  useEffect(() => {
-    if (progress !== undefined) return;
-    
-    const timer = setInterval(() => {
-      setFakeProgress((prev) => {
-        if (prev >= 95) return prev;
-        const increment = Math.random() * 8 + 2;
-        return Math.min(prev + increment, 95);
-      });
-    }, 800);
-    
-    return () => clearInterval(timer);
-  }, [progress]);
-
   const currentPearl = RADIOLOGY_PEARLS[currentIndex];
-  const displayProgress = progress ?? fakeProgress;
+  const displayProgress = Math.round(smoothProgress);
 
   // Version 1: Robot/Hologram Cinematic Design
   if (version === 1) {
@@ -318,7 +375,7 @@ export function LoadingPearls({
               <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
             </span>
             <p className="text-teal-400 font-mono text-xs tracking-widest uppercase">
-              {statusMessage}
+              {shownMessage}
             </p>
           </div>
 

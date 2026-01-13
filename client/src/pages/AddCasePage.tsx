@@ -44,6 +44,7 @@ interface StreamingState {
   isStreaming: boolean;
   streamedText: string;
   statusMessage: string;
+  displayMessage: string;
 }
 
 type ViewMode = "image" | "read";
@@ -68,6 +69,7 @@ export default function AddCasePage() {
     isStreaming: false,
     streamedText: "",
     statusMessage: "",
+    displayMessage: "",
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -137,7 +139,8 @@ export default function AddCasePage() {
     setStreamingState({
       isStreaming: true,
       streamedText: "",
-      statusMessage: "Uploading video...",
+      statusMessage: "processing",
+      displayMessage: "Uploading video...",
     });
 
     try {
@@ -168,9 +171,12 @@ export default function AddCasePage() {
           const data = JSON.parse(dataStr);
           
           if (eventType === "status" && data.status) {
+            // Use data.status (lowercase tokens) for progress mapping
+            // Store data.message for human-readable display
             setStreamingState(prev => ({
               ...prev,
-              statusMessage: data.message || data.status,
+              statusMessage: data.status,
+              displayMessage: data.message || data.status,
             }));
           }
           
@@ -179,11 +185,18 @@ export default function AddCasePage() {
             setStreamingState(prev => ({
               ...prev,
               streamedText: fullText,
-              statusMessage: "",
+              // Keep statusMessage latched - don't clear it when chunks arrive
             }));
           }
           
           if (eventType === "complete" && data.explanation !== undefined) {
+            // Set status to "complete" so progress bar fills to 100%
+            setStreamingState(prev => ({
+              ...prev,
+              statusMessage: "complete",
+              displayMessage: "Analysis complete",
+            }));
+            
             setCurrentExplanation(data.explanation);
             setCurrentTitle(data.title);
             setCurrentCategory(data.category);
@@ -200,11 +213,15 @@ export default function AddCasePage() {
               }];
             });
             
-            setStreamingState({
-              isStreaming: false,
-              streamedText: "",
-              statusMessage: "",
-            });
+            // Brief delay to show 100% completion before hiding overlay
+            setTimeout(() => {
+              setStreamingState({
+                isStreaming: false,
+                streamedText: "",
+                statusMessage: "",
+                displayMessage: "",
+              });
+            }, 800);
           }
           
           if (eventType === "error" && data.error) {
@@ -274,6 +291,7 @@ export default function AddCasePage() {
             isStreaming: false,
             streamedText: "",
             statusMessage: "",
+            displayMessage: "",
           };
         }
         return prev;
@@ -287,6 +305,7 @@ export default function AddCasePage() {
         isStreaming: false,
         streamedText: "",
         statusMessage: "",
+        displayMessage: "",
       });
       
       toast({
@@ -772,7 +791,10 @@ export default function AddCasePage() {
       {/* Full-screen cinematic loading overlay for video processing */}
       {streamingState.isStreaming && !streamingState.streamedText && (
         <div className="fixed inset-0 z-50" data-testid="loading-overlay">
-          <LoadingPearls statusMessage={streamingState.statusMessage || "Analyzing DICOM Data"} />
+          <LoadingPearls 
+            statusMessage={streamingState.statusMessage} 
+            displayMessage={streamingState.displayMessage || "Analyzing DICOM Data"} 
+          />
         </div>
       )}
     </div>
