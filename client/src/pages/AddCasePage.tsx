@@ -719,14 +719,7 @@ export default function AddCasePage() {
                 </div>
               )}
 
-              {streamingState.isStreaming && !streamingState.streamedText && (
-                <div className="flex flex-col items-center py-8" data-testid="chat-status">
-                  <LoadingPearls />
-                  {streamingState.statusMessage && (
-                    <p className="text-xs text-muted-foreground mt-2">{streamingState.statusMessage}</p>
-                  )}
-                </div>
-              )}
+              {/* Removed inline LoadingPearls - now shown as full-screen overlay */}
 
               {isLoading && !streamingState.isStreaming && !streamingState.streamedText && (
                 <div className="flex justify-start" data-testid="chat-loading">
@@ -775,6 +768,13 @@ export default function AddCasePage() {
         onChange={handleFileSelect}
         data-testid="input-file"
       />
+
+      {/* Full-screen cinematic loading overlay for video processing */}
+      {streamingState.isStreaming && !streamingState.streamedText && (
+        <div className="fixed inset-0 z-50" data-testid="loading-overlay">
+          <LoadingPearls statusMessage={streamingState.statusMessage || "Analyzing DICOM Data"} />
+        </div>
+      )}
     </div>
   );
 }

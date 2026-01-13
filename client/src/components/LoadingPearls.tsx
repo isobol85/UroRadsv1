@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import loadingVideo from "@assets/download_1768275325435.mp4";
 
 const RADIOLOGY_PEARLS = [
   "On CT urogram, the noncontrast phase is your stone detector - don't skip it when hematuria could be calculus-related.",
@@ -205,13 +205,16 @@ const CYCLE_INTERVAL_MS = 9000;
 
 interface LoadingPearlsProps {
   className?: string;
+  statusMessage?: string;
+  progress?: number;
 }
 
-export function LoadingPearls({ className = "" }: LoadingPearlsProps) {
+export function LoadingPearls({ className = "", statusMessage = "Analyzing DICOM Data", progress }: LoadingPearlsProps) {
   const [currentIndex, setCurrentIndex] = useState(() => 
     Math.floor(Math.random() * RADIOLOGY_PEARLS.length)
   );
   const [isVisible, setIsVisible] = useState(true);
+  const [fakeProgress, setFakeProgress] = useState(0);
 
   useEffect(() => {
     let fadeOutTimer: ReturnType<typeof setTimeout>;
@@ -225,8 +228,8 @@ export function LoadingPearls({ className = "" }: LoadingPearlsProps) {
           setCurrentIndex((prev) => (prev + 1) % RADIOLOGY_PEARLS.length);
           setIsVisible(true);
           scheduleCycle();
-        }, 300);
-      }, CYCLE_INTERVAL_MS - 300);
+        }, 500);
+      }, CYCLE_INTERVAL_MS - 500);
     };
 
     scheduleCycle();
@@ -237,37 +240,85 @@ export function LoadingPearls({ className = "" }: LoadingPearlsProps) {
     };
   }, []);
 
+  useEffect(() => {
+    if (progress !== undefined) return;
+    
+    const timer = setInterval(() => {
+      setFakeProgress((prev) => {
+        if (prev >= 95) return prev;
+        const increment = Math.random() * 8 + 2;
+        return Math.min(prev + increment, 95);
+      });
+    }, 800);
+    
+    return () => clearInterval(timer);
+  }, [progress]);
+
   const currentPearl = RADIOLOGY_PEARLS[currentIndex];
+  const displayProgress = progress ?? fakeProgress;
 
   return (
-    <div className={`flex flex-col items-center justify-center p-8 ${className}`} data-testid="loading-pearls">
-      <div className="flex items-center gap-3 mb-6">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" data-testid="loading-spinner" />
-        <span className="text-sm font-medium text-muted-foreground">Loading...</span>
-      </div>
+    <div className={`relative w-full h-full min-h-screen bg-black overflow-hidden flex flex-col items-center justify-end ${className}`} data-testid="loading-pearls">
       
-      <div className="max-w-md text-center">
-        <p 
-          className={`text-sm leading-relaxed text-muted-foreground transition-opacity duration-300 ${
-            isVisible ? "opacity-100" : "opacity-0"
-          }`}
-          data-testid="loading-pearl-text"
+      {/* Background Video Layer */}
+      <div className="absolute inset-0 z-0">
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover opacity-90"
+          data-testid="loading-video"
         >
-          {currentPearl}
-        </p>
+          <source src={loadingVideo} type="video/mp4" />
+        </video>
+        {/* Gradient Overlay for text readability */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
       </div>
-      
-      <div className="flex gap-1 mt-6">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30"
-            style={{
-              animation: "pulse 1.5s ease-in-out infinite",
-              animationDelay: `${i * 0.2}s`,
+
+      {/* Content Layer */}
+      <div className="relative z-10 w-full max-w-md px-6 pb-12 text-center">
+        
+        {/* Status Label with pulsing indicator */}
+        <div className="mb-4 flex items-center justify-center gap-2">
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
+          </span>
+          <p className="text-teal-400 font-mono text-xs tracking-widest uppercase">
+            {statusMessage}
+          </p>
+        </div>
+
+        {/* The Pearl Text */}
+        <div className="min-h-[120px] flex items-center justify-center">
+          <p 
+            className={`text-lg md:text-xl font-medium text-slate-100 leading-relaxed transition-all duration-500 ease-in-out ${
+              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+            }`}
+            style={{ textShadow: "0 2px 4px rgba(0,0,0,0.5)" }}
+            data-testid="loading-pearl-text"
+          >
+            "{currentPearl}"
+          </p>
+        </div>
+
+        {/* Branding / Footer */}
+        <p className="text-slate-500 text-sm mt-4 font-light">
+          UroRads AI
+        </p>
+
+        {/* Progress Bar */}
+        <div className="mt-8 w-full bg-gray-800/50 rounded-full h-1.5 backdrop-blur-sm overflow-hidden">
+          <div 
+            className="bg-teal-500 h-1.5 rounded-full transition-all duration-300 ease-out"
+            style={{ 
+              width: `${displayProgress}%`,
+              boxShadow: "0 0 10px #14b8a6"
             }}
+            data-testid="loading-progress-bar"
           />
-        ))}
+        </div>
       </div>
     </div>
   );
