@@ -116,27 +116,24 @@ export function LoadingPearls({ className = "" }: LoadingPearlsProps) {
   useEffect(() => {
     let fadeOutTimer: ReturnType<typeof setTimeout>;
     let fadeInTimer: ReturnType<typeof setTimeout>;
-    let cycleTimer: ReturnType<typeof setTimeout>;
 
-    const runCycle = () => {
+    const scheduleCycle = () => {
       fadeOutTimer = setTimeout(() => {
         setIsVisible(false);
         
         fadeInTimer = setTimeout(() => {
           setCurrentIndex((prev) => (prev + 1) % RADIOLOGY_PEARLS.length);
           setIsVisible(true);
+          scheduleCycle();
         }, 300);
       }, CYCLE_INTERVAL_MS - 300);
-      
-      cycleTimer = setTimeout(runCycle, CYCLE_INTERVAL_MS);
     };
 
-    cycleTimer = setTimeout(runCycle, CYCLE_INTERVAL_MS);
+    scheduleCycle();
 
     return () => {
       clearTimeout(fadeOutTimer);
       clearTimeout(fadeInTimer);
-      clearTimeout(cycleTimer);
     };
   }, []);
 
