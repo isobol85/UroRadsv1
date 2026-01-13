@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import loadingVideo from "@assets/download_1768275325435.mp4";
+
+// Version 1: Robot/Hologram cinematic video
+import loadingVideoV1 from "@assets/download_1768275325435.mp4";
+
+// Version 2: Placeholder - add new video import here when ready
+// import loadingVideoV2 from "@assets/your_new_video.mp4";
 
 const RADIOLOGY_PEARLS = [
   "On CT urogram, the noncontrast phase is your stone detector - don't skip it when hematuria could be calculus-related.",
@@ -203,18 +208,43 @@ const RADIOLOGY_PEARLS = [
 
 const CYCLE_INTERVAL_MS = 9000;
 
+// Version configurations - add new versions here
+const VERSION_CONFIG = {
+  1: {
+    video: loadingVideoV1,
+    accentColor: "teal",
+    gradientOverlay: "bg-gradient-to-t from-black via-black/40 to-transparent",
+  },
+  // Version 2: Add configuration when ready
+  // 2: {
+  //   video: loadingVideoV2,
+  //   accentColor: "blue", // or whatever color scheme
+  //   gradientOverlay: "bg-gradient-to-t from-black via-black/40 to-transparent",
+  // },
+} as const;
+
+type VersionNumber = keyof typeof VERSION_CONFIG;
+
 interface LoadingPearlsProps {
   className?: string;
   statusMessage?: string;
   progress?: number;
+  version?: VersionNumber;
 }
 
-export function LoadingPearls({ className = "", statusMessage = "Analyzing DICOM Data", progress }: LoadingPearlsProps) {
+export function LoadingPearls({ 
+  className = "", 
+  statusMessage = "Analyzing DICOM Data", 
+  progress,
+  version = 1 
+}: LoadingPearlsProps) {
   const [currentIndex, setCurrentIndex] = useState(() => 
     Math.floor(Math.random() * RADIOLOGY_PEARLS.length)
   );
   const [isVisible, setIsVisible] = useState(true);
   const [fakeProgress, setFakeProgress] = useState(0);
+
+  const config = VERSION_CONFIG[version] || VERSION_CONFIG[1];
 
   useEffect(() => {
     let fadeOutTimer: ReturnType<typeof setTimeout>;
@@ -257,69 +287,82 @@ export function LoadingPearls({ className = "", statusMessage = "Analyzing DICOM
   const currentPearl = RADIOLOGY_PEARLS[currentIndex];
   const displayProgress = progress ?? fakeProgress;
 
-  return (
-    <div className={`relative w-full h-full min-h-screen bg-black overflow-hidden flex flex-col items-center justify-end ${className}`} data-testid="loading-pearls">
-      
-      {/* Background Video Layer */}
-      <div className="absolute inset-0 z-0">
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="w-full h-full object-cover opacity-90"
-          data-testid="loading-video"
-        >
-          <source src={loadingVideo} type="video/mp4" />
-        </video>
-        {/* Gradient Overlay for text readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-      </div>
-
-      {/* Content Layer */}
-      <div className="relative z-10 w-full max-w-md px-6 pb-12 text-center">
+  // Version 1: Robot/Hologram Cinematic Design
+  if (version === 1) {
+    return (
+      <div className={`relative w-full h-full min-h-screen bg-black overflow-hidden flex flex-col items-center justify-end ${className}`} data-testid="loading-pearls">
         
-        {/* Status Label with pulsing indicator */}
-        <div className="mb-4 flex items-center justify-center gap-2">
-          <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
-          </span>
-          <p className="text-teal-400 font-mono text-xs tracking-widest uppercase">
-            {statusMessage}
-          </p>
-        </div>
-
-        {/* The Pearl Text */}
-        <div className="min-h-[120px] flex items-center justify-center">
-          <p 
-            className={`text-lg md:text-xl font-medium text-slate-100 leading-relaxed transition-all duration-500 ease-in-out ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-            }`}
-            style={{ textShadow: "0 2px 4px rgba(0,0,0,0.5)" }}
-            data-testid="loading-pearl-text"
+        {/* Background Video Layer */}
+        <div className="absolute inset-0 z-0">
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="w-full h-full object-cover opacity-90"
+            data-testid="loading-video"
           >
-            "{currentPearl}"
-          </p>
+            <source src={config.video} type="video/mp4" />
+          </video>
+          {/* Gradient Overlay for text readability */}
+          <div className={`absolute inset-0 ${config.gradientOverlay}`} />
         </div>
 
-        {/* Branding / Footer */}
-        <p className="text-slate-500 text-sm mt-4 font-light">
-          UroRads AI
-        </p>
+        {/* Content Layer */}
+        <div className="relative z-10 w-full max-w-md px-6 pb-12 text-center">
+          
+          {/* Status Label with pulsing indicator */}
+          <div className="mb-4 flex items-center justify-center gap-2">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
+            </span>
+            <p className="text-teal-400 font-mono text-xs tracking-widest uppercase">
+              {statusMessage}
+            </p>
+          </div>
 
-        {/* Progress Bar */}
-        <div className="mt-8 w-full bg-gray-800/50 rounded-full h-1.5 backdrop-blur-sm overflow-hidden">
-          <div 
-            className="bg-teal-500 h-1.5 rounded-full transition-all duration-300 ease-out"
-            style={{ 
-              width: `${displayProgress}%`,
-              boxShadow: "0 0 10px #14b8a6"
-            }}
-            data-testid="loading-progress-bar"
-          />
+          {/* The Pearl Text */}
+          <div className="min-h-[120px] flex items-center justify-center">
+            <p 
+              className={`text-lg md:text-xl font-medium text-slate-100 leading-relaxed transition-all duration-500 ease-in-out ${
+                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+              }`}
+              style={{ textShadow: "0 2px 4px rgba(0,0,0,0.5)" }}
+              data-testid="loading-pearl-text"
+            >
+              "{currentPearl}"
+            </p>
+          </div>
+
+          {/* Branding / Footer */}
+          <p className="text-slate-500 text-sm mt-4 font-light">
+            UroRads AI
+          </p>
+
+          {/* Progress Bar */}
+          <div className="mt-8 w-full bg-gray-800/50 rounded-full h-1.5 backdrop-blur-sm overflow-hidden">
+            <div 
+              className="bg-teal-500 h-1.5 rounded-full transition-all duration-300 ease-out"
+              style={{ 
+                width: `${displayProgress}%`,
+                boxShadow: "0 0 10px #14b8a6"
+              }}
+              data-testid="loading-progress-bar"
+            />
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  // Version 2: Placeholder - Add your new design here
+  // if (version === 2) {
+  //   return (
+  //     <div>Version 2 design goes here</div>
+  //   );
+  // }
+
+  // Fallback to version 1
+  return null;
 }
