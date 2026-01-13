@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CaseImage } from "@/components/CaseImage";
 import { ChatBubble } from "@/components/ChatBubble";
+import { LoadingPearls } from "@/components/LoadingPearls";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -718,18 +719,16 @@ export default function AddCasePage() {
                 </div>
               )}
 
-              {streamingState.isStreaming && !streamingState.streamedText && streamingState.statusMessage && (
-                <div className="flex justify-start" data-testid="chat-status">
-                  <div className="bg-muted rounded-2xl rounded-tl-sm p-4">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">{streamingState.statusMessage}</p>
-                    </div>
-                  </div>
+              {streamingState.isStreaming && !streamingState.streamedText && (
+                <div className="flex flex-col items-center py-8" data-testid="chat-status">
+                  <LoadingPearls />
+                  {streamingState.statusMessage && (
+                    <p className="text-xs text-muted-foreground mt-2">{streamingState.statusMessage}</p>
+                  )}
                 </div>
               )}
 
-              {isLoading && !streamingState.streamedText && !streamingState.statusMessage && (
+              {isLoading && !streamingState.isStreaming && !streamingState.streamedText && (
                 <div className="flex justify-start" data-testid="chat-loading">
                   <div className="bg-muted rounded-2xl rounded-tl-sm p-4">
                     <div className="flex gap-1">
