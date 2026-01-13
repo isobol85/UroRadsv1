@@ -276,6 +276,7 @@ export function LoadingPearls({
   const [isVisible, setIsVisible] = useState(true);
   const [smoothProgress, setSmoothProgress] = useState(0);
   const [targetProgress, setTargetProgress] = useState(0);
+  const [cycleProgress, setCycleProgress] = useState(0);
 
   const config = VERSION_CONFIG[version] || VERSION_CONFIG[1];
 
@@ -317,6 +318,19 @@ export function LoadingPearls({
     return () => clearInterval(timer);
   }, [targetProgress]);
 
+  // Track 9-second cycle progress for circular indicator
+  useEffect(() => {
+    const startTime = Date.now();
+    const updateInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const cycleElapsed = elapsed % CYCLE_INTERVAL_MS;
+      const progress = (cycleElapsed / CYCLE_INTERVAL_MS) * 100;
+      setCycleProgress(progress);
+    }, 50);
+    
+    return () => clearInterval(updateInterval);
+  }, []);
+
   useEffect(() => {
     let fadeOutTimer: ReturnType<typeof setTimeout>;
     let fadeInTimer: ReturnType<typeof setTimeout>;
@@ -328,6 +342,7 @@ export function LoadingPearls({
         fadeInTimer = setTimeout(() => {
           setCurrentIndex((prev) => (prev + 1) % RADIOLOGY_PEARLS.length);
           setIsVisible(true);
+          setCycleProgress(0); // Reset cycle progress on pearl change
           scheduleCycle();
         }, 500);
       }, CYCLE_INTERVAL_MS - 500);
@@ -366,39 +381,71 @@ export function LoadingPearls({
         </div>
 
         {/* Content Layer */}
-        <div className="relative z-10 w-full max-w-md px-6 pb-12 text-center">
+        <div className="relative z-10 w-full max-w-md px-6 pb-12">
           
-          {/* Status Label with pulsing indicator */}
-          <div className="mb-4 flex items-center justify-center gap-2">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
-            </span>
-            <p className="text-teal-400 font-mono text-xs tracking-widest uppercase">
-              {shownMessage}
+          {/* Glass Card */}
+          <div className="relative bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-xl">
+            
+            {/* Circular Progress Indicator - Top Right */}
+            <div className="absolute top-4 right-4" data-testid="cycle-progress-indicator">
+              <svg className="w-5 h-5 -rotate-90" viewBox="0 0 20 20">
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="8"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-slate-700/50"
+                />
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="8"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  className="text-teal-500 transition-all duration-100"
+                  style={{
+                    strokeDasharray: `${2 * Math.PI * 8}`,
+                    strokeDashoffset: `${2 * Math.PI * 8 * (1 - cycleProgress / 100)}`,
+                  }}
+                />
+              </svg>
+            </div>
+            
+            {/* Status Label with pulsing indicator */}
+            <div className="mb-4 flex items-center justify-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
+              </span>
+              <p className="text-teal-400 font-mono text-xs tracking-widest uppercase">
+                {shownMessage}
+              </p>
+            </div>
+
+            {/* The Pearl Text */}
+            <div className="min-h-[100px] flex items-center justify-center text-center">
+              <p 
+                className={`text-lg md:text-xl font-medium text-slate-100 leading-relaxed transition-all duration-500 ease-in-out ${
+                  isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+                }`}
+                data-testid="loading-pearl-text"
+              >
+                "{currentPearl}"
+              </p>
+            </div>
+
+            {/* Branding / Footer */}
+            <p className="text-slate-500 text-sm mt-4 font-light text-center">
+              UroRads AI
             </p>
           </div>
 
-          {/* The Pearl Text */}
-          <div className="min-h-[120px] flex items-center justify-center">
-            <p 
-              className={`text-lg md:text-xl font-medium text-slate-100 leading-relaxed transition-all duration-500 ease-in-out ${
-                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-              }`}
-              style={{ textShadow: "0 2px 4px rgba(0,0,0,0.5)" }}
-              data-testid="loading-pearl-text"
-            >
-              "{currentPearl}"
-            </p>
-          </div>
-
-          {/* Branding / Footer */}
-          <p className="text-slate-500 text-sm mt-4 font-light">
-            UroRads AI
-          </p>
-
-          {/* Progress Bar */}
-          <div className="mt-8 w-full bg-gray-800/50 rounded-full h-1.5 backdrop-blur-sm overflow-hidden">
+          {/* Progress Bar - Outside card at bottom */}
+          <div className="mt-6 w-full bg-gray-800/50 rounded-full h-1.5 backdrop-blur-sm overflow-hidden">
             <div 
               className="bg-teal-500 h-1.5 rounded-full transition-all duration-300 ease-out"
               style={{ 
