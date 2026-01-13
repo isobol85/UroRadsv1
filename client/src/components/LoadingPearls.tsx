@@ -386,8 +386,8 @@ export function LoadingPearls({
           {/* Glass Card */}
           <div className="relative bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-xl">
             
-            {/* Circular Progress Indicator - Top Right */}
-            <div className="absolute top-4 right-4" data-testid="cycle-progress-indicator">
+            {/* Circular Progress Indicator - Bottom Right */}
+            <div className="absolute bottom-4 right-4" data-testid="cycle-progress-indicator">
               <svg className="w-5 h-5 -rotate-90" viewBox="0 0 20 20">
                 <circle
                   cx="10"
