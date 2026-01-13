@@ -1,0 +1,140 @@
+Pasteable design brief for your designer (cleaned up + with a recommended direction)
+
+Project: UroRads – Loading Pearls Component (Mobile-first)
+
+Problem / Context
+When users upload CT scan videos, processing takes ~30–60+ seconds. We want the loading state to feel premium and educational by cycling short radiology “pearls” while the video is processed.
+
+Primary goals
+	•	Reduce perceived wait time with an engaging but clinical loading screen
+	•	Keep the educational pearl highly readable while a looping Sora video plays
+	•	Look professional/medical (not “gaming”), optimized for mobile
+
+User + environment
+	•	Radiology/urology trainees and attendings
+	•	Mostly mobile portrait usage
+	•	Dark mode required
+
+Content
+	•	Rotating “pearl” text (1–2 sentences max)
+	•	Changes every 9 seconds
+	•	Fade transition between pearls
+
+Technical constraints
+	•	React + TypeScript + Tailwind CSS
+	•	Video loops continuously (Sora clip)
+	•	Dark mode support
+	•	Pearl text fades in/out every 9s
+
+⸻
+
+Recommended layout direction (strong default)
+
+Option A (recommended): Full-bleed looping video background + bottom “pearl card” overlay
+
+Why: Best for mobile. Keeps the video visible as atmosphere while preserving text readability with a proper scrim + card.
+
+Structure
+	•	Full-screen container
+	•	Video: absolute, object-cover, full-bleed
+	•	Scrim overlay: gradient darkening toward the bottom (so text stays readable even on bright frames)
+	•	Pearl card: bottom anchored (like a subtle bottom sheet), not competing with the video
+
+Pearl card content hierarchy
+	1.	Small label row: Processing CT… + subtle spinner OR status icon
+	2.	“Pearl” label + optional index (e.g., “Pearl 37/200”)
+	3.	The pearl text (the hero element)
+	4.	Subtle progress indicator for the 9-second cycle (optional but recommended)
+
+⸻
+
+Answers to the design questions (what I’d tell the designer)
+
+1) Video placement: background vs alongside text
+	•	Mobile: video as background with text overlay (Option A).
+	•	Tablet / wide screens (optional responsive enhancement): allow split layout (video on top 55–60%, pearls card below) or keep background approach.
+	•	Avoid side-by-side on phones; it crushes text and reduces perceived quality.
+
+2) Container/card treatment for pearls text
+
+Use a “clinical glass card”:
+	•	Semi-transparent dark surface (blur optional)
+	•	Thin border
+	•	Soft shadow
+	•	Rounded corners (14–18px feels modern-medical)
+	•	Enough padding to read quickly (16–20px)
+
+Keep it anchored near bottom with safe-area padding so it doesn’t collide with iPhone home indicator.
+
+3) Subtle animations that complement the video
+
+Keep animations minimal and purposeful:
+	•	Pearl transition: crossfade + tiny vertical slide (4–8px) so it feels intentional
+	•	Progress indicator: a thin bar that fills across 9 seconds, then resets with next pearl
+	•	Optional: a very faint “pulse” on the card border once per pearl change (extremely subtle)
+
+Also support prefers-reduced-motion: disable sliding/pulsing and keep only simple fades.
+
+⸻
+
+Visual style guidance (so it stays “clinical”)
+	•	Dark neutrals (charcoal / slate), not pure black
+	•	One restrained accent color (cool blue/cyan) for progress bar or small highlights
+	•	Typography: clean sans (system font is fine), medium weight for pearl text
+	•	Maintain high contrast and avoid tiny fonts
+
+⸻
+
+Concrete UI spec (easy for designer + dev)
+
+Layout spacing (portrait)
+	•	Outer padding: 16px left/right
+	•	Bottom safe area: 16px + env(safe-area-inset-bottom)
+	•	Pearl card max width: 560px (centered on larger screens)
+	•	Pearl text: target 2–4 lines; if longer, clamp to 4 lines and truncate gracefully
+
+Typography (mobile)
+	•	Status line: 12–13px, muted
+	•	“Pearl” label: 12–13px, semi-muted, uppercase optional
+	•	Pearl body: 16–18px, leading ~1.35–1.45
+
+Video treatment
+	•	Full-bleed, object-cover
+	•	Add a scrim overlay:
+	•	Top: subtle dark wash (10–20%)
+	•	Bottom: stronger gradient (60–80%) to protect text readability
+	•	Optional: slight desaturation (very subtle) if the Sora video is visually busy
+
+Progress indicator (recommended)
+	•	2px–3px height bar inside card (or just under the pearl label)
+	•	Fills left → right across 9 seconds
+	•	Resets on pearl change
+
+⸻
+
+Edge cases to design for
+	•	Video fails to load: show a static fallback poster + same pearl card
+	•	Very short pearls: don’t let the card look empty (use label/progress/status to stabilize)
+	•	Very long pearls: clamp + fade-out at bottom (or clamp + ellipsis)
+	•	Processing time is unpredictable: avoid showing “XX seconds remaining” unless you truly have that signal
+
+⸻
+
+Designer deliverables (what you want back)
+
+Ask the designer for:
+	•	A single mobile portrait mock (primary)
+	•	Optional tablet mock (nice-to-have)
+	•	Color tokens (background, scrim, card surface, text, accent)
+	•	Font sizes + spacing tokens
+	•	Card radius/shadow spec
+	•	Progress indicator style spec
+
+⸻
+
+Optional “premium” enhancements (if you want it to feel extra polished)
+	•	Display a tiny “Did you know?” / “Pearl” icon (very subtle)
+	•	Add a “Loading steps” microcopy line that can update if your backend has milestones (e.g., “Extracting frames…”, “Running segmentation…”, “Generating report…”)
+	•	Add a tap-to-pause video (only if you think users will want it; not required)
+
+If you want, paste back whatever your designer replies (or just their specs), and I’ll translate it into a ready-to-drop React/Tailwind component structure (including dark mode tokens + reduce-motion behavior).
