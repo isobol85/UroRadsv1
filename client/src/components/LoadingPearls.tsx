@@ -101,7 +101,7 @@ const RADIOLOGY_PEARLS = [
   "Peyronie disease can be mapped on US: echogenic plaques with shadowing; Doppler can assess associated vascular changes.",
 ];
 
-const CYCLE_INTERVAL_MS = 6000;
+const CYCLE_INTERVAL_MS = 9000;
 
 interface LoadingPearlsProps {
   className?: string;
