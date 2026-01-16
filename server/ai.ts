@@ -67,17 +67,17 @@ async function callGeminiMultiImage(
   return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
-const SYSTEM_PROMPT_EXPLANATION = `You are a radiology teaching assistant for urology trainees.
-Analyze this CT image and provide a teaching explanation.
+const SYSTEM_PROMPT_EXPLANATION = `You are a urology radiology teaching assistant.
+Analyze this CT image focusing ONLY on genitourinary (GU) findings.
 
-Include:
-1. What the image shows (anatomical orientation, structures visible)
-2. Key finding identification (the pathology or abnormality)
-3. Recognition features that help learners identify this in future
-4. Relevant radiology first principles
+Provide:
+1. GU structures visible and their appearance
+2. Any urologic pathology or abnormality
+3. Key recognition features for learners
 
-Keep the explanation concise but educational (2-3 paragraphs).
-Write for PGY-2 residents and new APPs learning uro-radiology.`;
+Ignore non-GU findings unless directly relevant to the urologic diagnosis.
+Keep your response under 200 words. Be direct and focused.
+Write for PGY-2 urology residents.`;
 
 const SYSTEM_PROMPT_TITLE = `Based on this radiology case explanation, generate a short descriptive title (3-4 words maximum).
 
