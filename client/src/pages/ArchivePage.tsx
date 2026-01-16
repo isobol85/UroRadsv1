@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { FolderOpen, Loader2, Trash2, Pencil } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -20,6 +20,22 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion";
 import type { Case } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+
+function useIsTouchDevice() {
+  const [isTouch, setIsTouch] = useState(false);
+  
+  useEffect(() => {
+    const checkTouch = () => {
+      setIsTouch(
+        'ontouchstart' in window || 
+        navigator.maxTouchPoints > 0
+      );
+    };
+    checkTouch();
+  }, []);
+  
+  return isTouch;
+}
 
 function getCategoryColor(category: string): string {
   const colors: Record<string, string> = {
@@ -44,11 +60,13 @@ interface SwipeableCaseItemProps {
 }
 
 function SwipeableCaseItem({ case_, onDeleteClick, onEditClick }: SwipeableCaseItemProps) {
+  const isTouch = useIsTouchDevice();
   const x = useMotionValue(0);
   const actionOpacity = useTransform(x, [-60, 0], [1, 0]);
   const actionScale = useTransform(x, [-60, 0], [1, 0.5]);
   const [isDragging, setIsDragging] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     setIsDragging(false);
@@ -76,6 +94,79 @@ function SwipeableCaseItem({ case_, onDeleteClick, onEditClick }: SwipeableCaseI
     x.set(0);
     setIsOpen(false);
   };
+
+  const caseContent = (
+    <div 
+      className="flex items-center gap-4 px-4 py-4 hover-elevate active-elevate-2 cursor-pointer"
+      data-testid={`archive-item-${case_.id}`}
+    >
+      <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+        <img 
+          src={case_.imageUrl} 
+          alt="" 
+          className="w-full h-full object-cover"
+        />
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="text-sm font-bold text-foreground" data-testid={`text-case-number-${case_.id}`}>
+            Case #{case_.caseNumber}
+          </span>
+          <span 
+            className={`text-xs px-2 py-0.5 rounded-full font-medium ${getCategoryColor(case_.category)}`}
+            data-testid={`badge-category-${case_.id}`}
+          >
+            {case_.category}
+          </span>
+        </div>
+        <p 
+          className="text-sm text-muted-foreground truncate"
+          data-testid={`text-title-${case_.id}`}
+        >
+          {case_.title}
+        </p>
+      </div>
+    </div>
+  );
+
+  if (!isTouch) {
+    return (
+      <div 
+        className="relative border-b border-border group"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <Link href={`/case/${case_.id}`}>
+          {caseContent}
+        </Link>
+        
+        <div 
+          className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 transition-all duration-200 ${
+            isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2 pointer-events-none'
+          }`}
+          style={{ visibility: isHovered ? 'visible' : 'hidden' }}
+        >
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={handleEditClick}
+            data-testid={`button-edit-${case_.id}`}
+          >
+            <Pencil className="w-4 h-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="destructive"
+            onClick={handleTrashClick}
+            data-testid={`button-delete-${case_.id}`}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative overflow-hidden border-b border-border">
@@ -122,38 +213,7 @@ function SwipeableCaseItem({ case_, onDeleteClick, onEditClick }: SwipeableCaseI
           href={`/case/${case_.id}`}
           onClick={(e) => isDragging && e.preventDefault()}
         >
-          <div 
-            className="flex items-center gap-4 px-4 py-4 hover-elevate active-elevate-2 cursor-pointer"
-            data-testid={`archive-item-${case_.id}`}
-          >
-            <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-              <img 
-                src={case_.imageUrl} 
-                alt="" 
-                className="w-full h-full object-cover"
-              />
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className="text-sm font-bold text-foreground" data-testid={`text-case-number-${case_.id}`}>
-                  Case #{case_.caseNumber}
-                </span>
-                <span 
-                  className={`text-xs px-2 py-0.5 rounded-full font-medium ${getCategoryColor(case_.category)}`}
-                  data-testid={`badge-category-${case_.id}`}
-                >
-                  {case_.category}
-                </span>
-              </div>
-              <p 
-                className="text-sm text-muted-foreground truncate"
-                data-testid={`text-title-${case_.id}`}
-              >
-                {case_.title}
-              </p>
-            </div>
-          </div>
+          {caseContent}
         </Link>
       </motion.div>
     </div>
