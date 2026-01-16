@@ -22,7 +22,9 @@ Preferred communication style: Simple, everyday language.
 - **Runtime**: Node.js with Express
 - **Language**: TypeScript (ESM modules)
 - **API Pattern**: RESTful endpoints prefixed with `/api`
-- **AI Integration**: OpenAI GPT via Replit AI Integrations (server/ai.ts)
+- **AI Integration**: Google Gemini via Replit AI Integrations (server/ai.ts)
+  - gemini-2.5-flash: Image/video analysis (fast, efficient)
+  - gemini-2.5-pro: Chat responses, title/category generation (quality)
 - **Development**: Vite middleware for hot module replacement
 - **Production**: Static file serving from built assets
 
@@ -57,7 +59,7 @@ Two main tables:
 │       ├── hooks/        # Custom React hooks
 │       └── lib/          # Utilities and query client
 ├── server/           # Express backend
-│   ├── ai.ts         # OpenAI AI integration
+│   ├── ai.ts         # Gemini AI integration
 │   ├── db.ts         # Database connection
 │   ├── storage.ts    # DatabaseStorage implementation
 │   └── routes.ts     # API route handlers
@@ -74,8 +76,10 @@ Two main tables:
 ## External Dependencies
 
 ### AI Integration
-- **OpenAI GPT**: Via Replit AI Integrations for image analysis and explanations
-- Environment variables: `AI_INTEGRATIONS_OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`
+- **Google Gemini**: Via Replit AI Integrations for image analysis, chat, and explanations
+  - gemini-2.5-flash: Used for image/video analysis (fast processing)
+  - gemini-2.5-pro: Used for chat, titles, and text generation (high quality)
+- Environment variables: `AI_INTEGRATIONS_GEMINI_API_KEY`, `AI_INTEGRATIONS_GEMINI_BASE_URL`
 
 ### Database
 - **PostgreSQL**: Primary database (configured via `DATABASE_URL` environment variable)

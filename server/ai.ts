@@ -1,18 +1,4 @@
-import OpenAI from "openai";
-
-const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-
-if (!baseUrl || !apiKey) {
-  console.warn("OpenAI AI integration environment variables not configured");
-}
-
-const openai = new OpenAI({
-  apiKey: apiKey || "",
-  baseURL: baseUrl || "",
-});
-
-// Gemini via Replit AI Integration proxy
+// Gemini AI integration - using Replit AI Integration proxy
 const geminiApiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
 const geminiBaseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
@@ -20,21 +6,86 @@ if (!geminiApiKey || !geminiBaseUrl) {
   console.warn("Gemini AI integration environment variables not configured");
 }
 
-const MODEL = "gpt-5.1";
-const GEMINI_MODEL = "gemini-2.5-flash";
+// Model allocation: flash for images/video (fast), pro for chat/text (quality)
+const GEMINI_FLASH = "gemini-2.5-flash";
+const GEMINI_PRO = "gemini-2.5-pro";
+
+// Helper function to call Gemini generateContent for text-only requests
+async function callGeminiText(
+  prompt: string,
+  model: string = GEMINI_PRO
+): Promise<string> {
+  const url = `${geminiBaseUrl}/models/${model}:generateContent`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${geminiApiKey}`,
+    },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+// Helper function to call Gemini generateContent with a single image
+async function callGeminiWithImage(
+  textPrompt: string,
+  imageBase64: string,
+  mimeType: string,
+  model: string = GEMINI_FLASH
+): Promise<string> {
+  const url = `${geminiBaseUrl}/models/${model}:generateContent`;
+
+  const parts = [
+    {
+      inline_data: {
+        mime_type: mimeType,
+        data: imageBase64,
+      },
+    },
+    { text: textPrompt },
+  ];
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${geminiApiKey}`,
+    },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
 
 // Helper function to call Gemini generateContent with multiple images
-// Uses direct fetch to the Replit proxy endpoint
 async function callGeminiMultiImage(
   textPrompt: string,
-  images: Array<{ base64: string; mimeType: string }>
+  images: Array<{ base64: string; mimeType: string }>,
+  model: string = GEMINI_FLASH
 ): Promise<string> {
-  const url = `${geminiBaseUrl}/models/${GEMINI_MODEL}:generateContent`;
-  
-  // Build parts array with images first, then text
+  const url = `${geminiBaseUrl}/models/${model}:generateContent`;
+
   const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
-  
-  // Add each image as inline data
+
   for (const img of images) {
     parts.push({
       inline_data: {
@@ -43,8 +94,7 @@ async function callGeminiMultiImage(
       },
     });
   }
-  
-  // Add text prompt at the end
+
   parts.push({ text: textPrompt });
 
   const response = await fetch(url, {
@@ -56,6 +106,59 @@ async function callGeminiMultiImage(
     body: JSON.stringify({
       contents: [{ role: "user", parts }],
     }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+// Helper function for multi-turn chat with Gemini
+async function callGeminiChat(
+  systemContext: string,
+  chatHistory: Array<{ role: string; content: string }>,
+  userMessage: string
+): Promise<string> {
+  const url = `${geminiBaseUrl}/models/${GEMINI_PRO}:generateContent`;
+
+  // Build contents array with system context + history + new message
+  const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+
+  // Add system context as first user message
+  contents.push({
+    role: "user",
+    parts: [{ text: `Context for this conversation:\n\n${systemContext}\n\nPlease acknowledge and then I'll ask my question.` }],
+  });
+  contents.push({
+    role: "model",
+    parts: [{ text: "I understand the case context. Please go ahead with your question." }],
+  });
+
+  // Add chat history
+  for (const msg of chatHistory) {
+    contents.push({
+      role: msg.role === "user" ? "user" : "model",
+      parts: [{ text: msg.content }],
+    });
+  }
+
+  // Add new user message
+  contents.push({
+    role: "user",
+    parts: [{ text: userMessage }],
+  });
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${geminiApiKey}`,
+    },
+    body: JSON.stringify({ contents }),
   });
 
   if (!response.ok) {
@@ -103,7 +206,7 @@ Return ONLY the category name, no other text.`;
 
 const SYSTEM_PROMPT_CHAT = `You are a radiology teaching assistant. The learner is viewing a uro-radiology case and has a follow-up question.
 
-Answer their question in a helpful, educational manner.
+Answer their question in a helpful, educational manner. Keep responses under 200 words.
 Stay focused on the specific case and radiology concepts.
 If they ask something unrelated to the case, gently redirect.`;
 
@@ -116,62 +219,24 @@ function extractBase64Data(dataUrl: string): { mimeType: string; data: string } 
 }
 
 export async function generateExplanation(imageBase64: string, attendingPrompt?: string): Promise<string> {
-  const prompt = attendingPrompt 
+  const prompt = attendingPrompt
     ? `${SYSTEM_PROMPT_EXPLANATION}\n\nAdditional guidance from the attending: ${attendingPrompt}`
     : SYSTEM_PROMPT_EXPLANATION;
 
   const { mimeType, data } = extractBase64Data(imageBase64);
 
-  const response = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: prompt },
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:${mimeType};base64,${data}`,
-            },
-          },
-        ],
-      },
-    ],
-    max_completion_tokens: 1024,
-  });
-
-  return response.choices[0]?.message?.content || "";
+  return await callGeminiWithImage(prompt, data, mimeType, GEMINI_FLASH);
 }
 
 export async function generateTitle(explanation: string): Promise<string> {
-  const response = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [
-      {
-        role: "user",
-        content: `${SYSTEM_PROMPT_TITLE}\n\nExplanation:\n${explanation}`,
-      },
-    ],
-    max_completion_tokens: 50,
-  });
-
-  return (response.choices[0]?.message?.content || "Untitled Case").trim();
+  const prompt = `${SYSTEM_PROMPT_TITLE}\n\nExplanation:\n${explanation}`;
+  const title = await callGeminiText(prompt, GEMINI_PRO);
+  return title.trim() || "Untitled Case";
 }
 
 export async function generateCategory(explanation: string): Promise<string> {
-  const response = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [
-      {
-        role: "user",
-        content: `${SYSTEM_PROMPT_CATEGORY}\n\nExplanation:\n${explanation}`,
-      },
-    ],
-    max_completion_tokens: 20,
-  });
-
-  const category = (response.choices[0]?.message?.content || "Other").trim();
+  const prompt = `${SYSTEM_PROMPT_CATEGORY}\n\nExplanation:\n${explanation}`;
+  const category = (await callGeminiText(prompt, GEMINI_PRO)).trim();
   const validCategories = ["Stones", "Hydronephrosis", "Mass/Tumor", "Infection", "Trauma", "Congenital", "Vascular", "Bladder", "Prostate", "Other"];
   return validCategories.includes(category) ? category : "Other";
 }
@@ -181,39 +246,16 @@ export async function generateChatResponse(
   chatHistory: Array<{ role: string; content: string }>,
   userMessage: string
 ): Promise<string> {
-  // Filter out failed AI responses from history to avoid confusing the model
-  const filteredHistory = chatHistory.filter(msg => 
+  // Filter out failed AI responses from history
+  const filteredHistory = chatHistory.filter(msg =>
     !(msg.role === "ai" && msg.content.includes("I'm sorry, I couldn't generate a response"))
   );
 
-  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    {
-      role: "system",
-      content: `${SYSTEM_PROMPT_CHAT}\n\nCase Explanation:\n${explanation}`,
-    },
-  ];
-
-  for (const msg of filteredHistory) {
-    messages.push({
-      role: msg.role === "user" ? "user" : "assistant",
-      content: msg.content,
-    });
-  }
-
-  messages.push({
-    role: "user",
-    content: userMessage,
-  });
+  const systemContext = `${SYSTEM_PROMPT_CHAT}\n\nCase Explanation:\n${explanation}`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: MODEL,
-      messages,
-      max_completion_tokens: 2048,
-    });
-
-    const content = response.choices[0]?.message?.content;
-    return content || "I'm sorry, I couldn't generate a response. Please try again.";
+    const response = await callGeminiChat(systemContext, filteredHistory, userMessage);
+    return response || "I'm sorry, I couldn't generate a response. Please try again.";
   } catch (error) {
     console.error("Chat API error:", error);
     throw error;
@@ -233,30 +275,12 @@ ${currentExplanation}
 Attending's feedback/request:
 ${userFeedback}
 
-Please update the explanation based on this feedback. Keep the same educational format but incorporate the requested changes.`;
+Please update the explanation based on this feedback. Keep the same educational format but incorporate the requested changes. Keep response under 200 words.`;
 
   const { mimeType, data } = extractBase64Data(imageBase64);
 
-  const response = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: prompt },
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:${mimeType};base64,${data}`,
-            },
-          },
-        ],
-      },
-    ],
-    max_completion_tokens: 1024,
-  });
-
-  return response.choices[0]?.message?.content || currentExplanation;
+  const refined = await callGeminiWithImage(prompt, data, mimeType, GEMINI_FLASH);
+  return refined || currentExplanation;
 }
 
 const SYSTEM_PROMPT_VIDEO_ANALYSIS = `You are a radiology teaching assistant for urology trainees.
@@ -284,18 +308,18 @@ export async function analyzeVideoFrames(
   frames: FrameImage[],
   attendingPrompt?: string
 ): Promise<string> {
-  const prompt = attendingPrompt 
+  const prompt = attendingPrompt
     ? `${SYSTEM_PROMPT_VIDEO_ANALYSIS}\n\nAdditional guidance from the attending: ${attendingPrompt}`
     : SYSTEM_PROMPT_VIDEO_ANALYSIS;
 
   const textPrompt = `${prompt}\n\nThe following ${frames.length} frames are extracted from a CT scan video, shown in sequence:`;
-  
+
   const images = frames.map(frame => ({
     base64: frame.base64,
     mimeType: frame.mimeType,
   }));
 
-  return await callGeminiMultiImage(textPrompt, images);
+  return await callGeminiMultiImage(textPrompt, images, GEMINI_FLASH);
 }
 
 export async function testMultiImageCapability(
@@ -304,7 +328,7 @@ export async function testMultiImageCapability(
   try {
     const textPrompt = `You are being sent ${images.length} images. Please confirm you can see all of them by describing what you see in each image briefly (1 sentence each). Number your descriptions.`;
 
-    const response = await callGeminiMultiImage(textPrompt, images);
+    const response = await callGeminiMultiImage(textPrompt, images, GEMINI_FLASH);
 
     return {
       success: true,
