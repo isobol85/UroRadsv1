@@ -36,9 +36,15 @@ Preferred communication style: Simple, everyday language.
 - **Storage Interface**: DatabaseStorage implementation in `server/storage.ts`
 
 ### Database Schema
-Two main tables:
+Main table:
 - **cases**: Stores radiology teaching cases (id, caseNumber, title, imageUrl, explanation, category, attendingPrompt, createdAt)
-- **chatMessages**: Stores AI chat conversations per case (id, caseId, role, content, createdAt)
+
+### Chat Storage (Local)
+- Chat messages are stored in browser localStorage (no login required)
+- Storage key format: `urorads_chat_{caseId}`
+- Auto-expires after 48 hours for privacy and cleanliness
+- Each case has its own separate chat history
+- Utility: `client/src/lib/chatStorage.ts`
 
 ### API Endpoints
 - `GET /api/cases` - List all cases
@@ -54,7 +60,7 @@ Two main tables:
 ```
 ├── client/           # React frontend application
 │   └── src/
-│       ├── components/   # Reusable UI components (BottomNav, ChatBubble, CaseImage, EmptyState)
+│       ├── components/   # Reusable UI components (BottomNav, ChatBubble, CaseImage, EmptyState, ExplanationCard)
 │       ├── pages/        # Route page components (CasePage, ArchivePage, AddCasePage)
 │       ├── hooks/        # Custom React hooks
 │       └── lib/          # Utilities and query client
