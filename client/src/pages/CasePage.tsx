@@ -1,18 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
-import { Send, ChevronRight, ChevronUp, Loader2, Video } from "lucide-react";
+import { Send, ChevronRight, ChevronUp, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CaseImage } from "@/components/CaseImage";
 import { ChatBubble } from "@/components/ChatBubble";
+import { ExplanationCard } from "@/components/ExplanationCard";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingPearls } from "@/components/LoadingPearls";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import type { Case, ChatMessage } from "@shared/schema";
+import { getChatMessages, saveChatMessage, cleanupExpiredChats, type LocalChatMessage } from "@/lib/chatStorage";
+import type { Case } from "@shared/schema";
 
 type ViewMode = "image" | "read";
 
@@ -22,7 +24,7 @@ export default function CasePage() {
   const { toast } = useToast();
   const caseId = params?.id;
   
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [mode, setMode] = useState<ViewMode>("image");
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -39,15 +41,24 @@ export default function CasePage() {
     ? cases.find(c => c.id === caseId)
     : cases[0];
 
-  const { data: storedMessages = [] } = useQuery<ChatMessage[]>({
-    queryKey: ["/api/cases", currentCase?.id, "messages"],
-    enabled: !!currentCase?.id,
-  });
-
-  const storedMessagesKey = storedMessages.map(m => m.id).join(",");
   useEffect(() => {
-    setMessages(storedMessages);
-  }, [storedMessagesKey]);
+    cleanupExpiredChats();
+  }, []);
+
+  useEffect(() => {
+    if (currentCase?.id) {
+      const storedMessages = getChatMessages(currentCase.id);
+      setMessages(storedMessages);
+      setMode("image");
+      setIsTransitioning(false);
+      setInputValue("");
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
+    } else {
+      setMessages([]);
+    }
+  }, [currentCase?.id]);
 
   useEffect(() => {
     if (mode === "read" && scrollRef.current) {
@@ -74,29 +85,20 @@ export default function CasePage() {
   }, []);
 
   const chatMutation = useMutation({
-    mutationFn: async (userMessage: string) => {
+    mutationFn: async ({ userMessage, currentMessages }: { userMessage: string; currentMessages: LocalChatMessage[] }) => {
       const response = await apiRequest("POST", "/api/ai/chat", {
         explanation: currentCase!.explanation,
-        chatHistory: messages.map(m => ({ role: m.role, content: m.content })),
+        chatHistory: currentMessages.map(m => ({ role: m.role, content: m.content })),
         userMessage,
       });
       return response.json() as Promise<{ response: string }>;
     },
-    onSuccess: async (data) => {
-      await apiRequest("POST", `/api/cases/${currentCase!.id}/messages`, {
+    onSuccess: (data) => {
+      const aiMessage = saveChatMessage(currentCase!.id, {
         role: "ai",
         content: data.response,
       });
-      
-      const aiMessage: ChatMessage = {
-        id: `msg-${Date.now()}`,
-        caseId: currentCase!.id,
-        role: "ai",
-        content: data.response,
-        createdAt: new Date(),
-      };
       setMessages(prev => [...prev, aiMessage]);
-      queryClient.invalidateQueries({ queryKey: ["/api/cases", currentCase?.id, "messages"] });
     },
     onError: () => {
       toast({
@@ -154,18 +156,10 @@ export default function CasePage() {
 
     const userInput = inputValue.trim();
     
-    await apiRequest("POST", `/api/cases/${currentCase.id}/messages`, {
+    const userMessage = saveChatMessage(currentCase.id, {
       role: "user",
       content: userInput,
     });
-
-    const userMessage: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      caseId: currentCase.id,
-      role: "user",
-      content: userInput,
-      createdAt: new Date(),
-    };
 
     setMessages(prev => [...prev, userMessage]);
     setInputValue("");
@@ -177,7 +171,7 @@ export default function CasePage() {
       handleModeChange("read");
     }
     
-    chatMutation.mutate(userInput);
+    chatMutation.mutate({ userMessage: userInput, currentMessages: [...messages, userMessage] });
   };
 
   const handleNextCase = () => {
@@ -186,6 +180,10 @@ export default function CasePage() {
     const nextCase = cases[nextIndex];
     setMode("image");
     setIsTransitioning(false);
+    setInputValue("");
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     navigate(`/case/${nextCase.id}`);
   };
 
@@ -237,6 +235,7 @@ export default function CasePage() {
               ? "opacity-100 translate-y-0 pointer-events-auto z-10" 
               : "opacity-0 -translate-y-4 pointer-events-none z-0"
           )}
+          aria-hidden={!isImageMode}
           onTransitionEnd={isImageMode ? handleTransitionEnd : undefined}
         >
           <div className="flex-1 flex flex-col p-4 min-h-0">
@@ -281,6 +280,7 @@ export default function CasePage() {
               ? "opacity-100 translate-y-0 pointer-events-auto z-10" 
               : "opacity-0 translate-y-4 pointer-events-none z-0"
           )}
+          aria-hidden={isImageMode}
           onTransitionEnd={!isImageMode ? handleTransitionEnd : undefined}
         >
           {!isKeyboardVisible && (
@@ -316,16 +316,20 @@ export default function CasePage() {
           )}
 
           <ScrollArea className="flex-1 px-4" ref={scrollRef}>
-            <div className="space-y-3 py-4">
-              <ChatBubble role="ai" content={currentCase.explanation} />
+            <div className="space-y-4 py-4">
+              <ExplanationCard content={currentCase.explanation} />
               
-              {messages.map((message) => (
-                <ChatBubble 
-                  key={message.id} 
-                  role={message.role as "ai" | "user"} 
-                  content={message.content} 
-                />
-              ))}
+              {messages.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  {messages.map((message) => (
+                    <ChatBubble 
+                      key={message.id} 
+                      role={message.role} 
+                      content={message.content} 
+                    />
+                  ))}
+                </div>
+              )}
               
               {isLoading && (
                 <div className="flex justify-start" data-testid="chat-loading">
