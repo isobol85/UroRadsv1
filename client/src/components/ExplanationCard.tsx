@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { BookOpen } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface ExplanationCardProps {
   content: string;
@@ -20,9 +21,9 @@ export function ExplanationCard({ content, className }: ExplanationCardProps) {
         <span className="text-sm font-semibold text-primary">Case Explanation</span>
       </div>
       <div className="p-4">
-        <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
-          {content}
-        </p>
+        <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-p:leading-relaxed prose-headings:my-2 prose-headings:font-semibold prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-strong:font-semibold prose-code:bg-background/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs text-foreground">
+          <ReactMarkdown>{content}</ReactMarkdown>
+        </div>
       </div>
     </div>
   );
