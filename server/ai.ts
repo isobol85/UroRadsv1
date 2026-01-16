@@ -200,13 +200,22 @@ export async function generateChatResponse(
     content: userMessage,
   });
 
-  const response = await openai.chat.completions.create({
-    model: MODEL,
-    messages,
-    max_completion_tokens: 512,
-  });
+  try {
+    const response = await openai.chat.completions.create({
+      model: MODEL,
+      messages,
+      max_completion_tokens: 512,
+    });
 
-  return response.choices[0]?.message?.content || "I'm sorry, I couldn't generate a response. Please try again.";
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.error("Chat response empty. Full response:", JSON.stringify(response, null, 2));
+    }
+    return content || "I'm sorry, I couldn't generate a response. Please try again.";
+  } catch (error) {
+    console.error("Chat API error:", error);
+    throw error;
+  }
 }
 
 export async function refineExplanation(
