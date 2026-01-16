@@ -181,6 +181,11 @@ export async function generateChatResponse(
   chatHistory: Array<{ role: string; content: string }>,
   userMessage: string
 ): Promise<string> {
+  // Filter out failed AI responses from history to avoid confusing the model
+  const filteredHistory = chatHistory.filter(msg => 
+    !(msg.role === "ai" && msg.content.includes("I'm sorry, I couldn't generate a response"))
+  );
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     {
       role: "system",
@@ -188,7 +193,7 @@ export async function generateChatResponse(
     },
   ];
 
-  for (const msg of chatHistory) {
+  for (const msg of filteredHistory) {
     messages.push({
       role: msg.role === "user" ? "user" : "assistant",
       content: msg.content,
@@ -204,13 +209,10 @@ export async function generateChatResponse(
     const response = await openai.chat.completions.create({
       model: MODEL,
       messages,
-      max_completion_tokens: 512,
+      max_completion_tokens: 2048,
     });
 
     const content = response.choices[0]?.message?.content;
-    if (!content) {
-      console.error("Chat response empty. Full response:", JSON.stringify(response, null, 2));
-    }
     return content || "I'm sorry, I couldn't generate a response. Please try again.";
   } catch (error) {
     console.error("Chat API error:", error);
