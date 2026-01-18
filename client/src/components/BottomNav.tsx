@@ -13,7 +13,8 @@ export function BottomNav() {
 
   return (
     <nav 
-      className="shrink-0 h-16 bg-card border-t border-card-border grid grid-cols-3"
+      className="shrink-0 bg-card border-t border-card-border grid grid-cols-3"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)', minHeight: '4rem' }}
       data-testid="nav-bottom"
     >
       {navItems.map((item) => {
