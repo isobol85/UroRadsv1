@@ -364,10 +364,6 @@ export default function AddCasePage() {
       queryClient.setQueryData<Case[]>(["/api/cases"], (oldCases) => {
         return oldCases ? [newCase, ...oldCases] : [newCase];
       });
-      toast({
-        title: "Case Published",
-        description: "Your teaching case is now available in the archive.",
-      });
       setSelectedImage(null);
       setMessages([]);
       setCurrentExplanation("");

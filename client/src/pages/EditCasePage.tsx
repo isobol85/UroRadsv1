@@ -121,10 +121,6 @@ export default function EditCasePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cases", id] });
-      toast({
-        title: "Case Updated",
-        description: "Your changes have been saved.",
-      });
       navigate("/archive");
     },
     onError: () => {
