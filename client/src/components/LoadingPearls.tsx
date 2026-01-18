@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 
-// Version 1: Robot/Hologram cinematic video
-import loadingVideoV1 from "@assets/download_1768275325435.mp4";
+// Version 1: Robot/Hologram cinematic video (original)
+// import loadingVideoV1 from "@assets/download_1768275325435.mp4";
 
-// Version 2: Placeholder - add new video import here when ready
-// import loadingVideoV2 from "@assets/your_new_video.mp4";
+// Version 2: New abstract video
+import loadingVideoV1 from "@assets/download_1768709345539.mp4";
 
 const RADIOLOGY_PEARLS = [
   "On CT urogram, the noncontrast phase is your stone detector - don't skip it when hematuria could be calculus-related.",
