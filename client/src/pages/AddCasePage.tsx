@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
+import type { Case } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -357,10 +358,12 @@ export default function AddCasePage() {
         videoUrl: storedVideoUrl,
         mediaType: mediaType,
       });
-      return response.json();
+      return response.json() as Promise<Case>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+    onSuccess: (newCase: Case) => {
+      queryClient.setQueryData<Case[]>(["/api/cases"], (oldCases) => {
+        return oldCases ? [newCase, ...oldCases] : [newCase];
+      });
       toast({
         title: "Case Published",
         description: "Your teaching case is now available in the archive.",
