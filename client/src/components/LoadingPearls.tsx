@@ -259,6 +259,8 @@ interface LoadingPearlsProps {
   displayMessage?: string;
   progress?: number;
   version?: VersionNumber;
+  imageThumbnail?: string;
+  fileName?: string;
 }
 
 export function LoadingPearls({ 
@@ -266,7 +268,9 @@ export function LoadingPearls({
   statusMessage = "processing",
   displayMessage,
   progress,
-  version = 1 
+  version = 1,
+  imageThumbnail,
+  fileName
 }: LoadingPearlsProps) {
   // Display message shown to user (human-readable)
   const shownMessage = displayMessage || statusMessage || "Analyzing DICOM Data";
@@ -383,6 +387,25 @@ export function LoadingPearls({
         {/* Content Layer */}
         <div className="relative z-10 w-full max-w-md px-6 pb-12">
           
+          {/* Image Thumbnail Preview (when provided) */}
+          {imageThumbnail && (
+            <div className="mb-4 flex flex-col items-center" data-testid="analyzing-image-preview">
+              <div className="relative w-24 h-24 rounded-lg overflow-hidden border-2 border-teal-500/50 shadow-lg shadow-teal-500/20">
+                <img 
+                  src={imageThumbnail} 
+                  alt="Analyzing" 
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+              </div>
+              {fileName && (
+                <p className="mt-2 text-slate-400 text-xs font-mono truncate max-w-[200px]" data-testid="analyzing-filename">
+                  {fileName}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Glass Card */}
           <div className="relative bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-xl">
             

@@ -56,6 +56,7 @@ export default function AddCasePage() {
   const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
   const [storedVideoUrl, setStoredVideoUrl] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<MediaType>("image");
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -392,6 +393,7 @@ export default function AddCasePage() {
   const resetState = () => {
     setSelectedImage(null);
     setSelectedVideo(null);
+    setSelectedFileName(null);
     // Revoke old object URL to prevent memory leak
     if (selectedVideoUrl) {
       URL.revokeObjectURL(selectedVideoUrl);
@@ -416,6 +418,7 @@ export default function AddCasePage() {
           resetState();
           setMediaType("image");
           setSelectedImage(reader.result as string);
+          setSelectedFileName(file.name);
         };
         reader.readAsDataURL(file);
       } else if (file.type.startsWith("video/")) {
@@ -423,6 +426,7 @@ export default function AddCasePage() {
         setMediaType("video");
         setSelectedVideo(file);
         setSelectedVideoUrl(URL.createObjectURL(file));
+        setSelectedFileName(file.name);
       } else {
         toast({
           title: "Invalid file type",
@@ -787,12 +791,14 @@ export default function AddCasePage() {
         data-testid="input-file"
       />
 
-      {/* Full-screen cinematic loading overlay for video processing */}
-      {streamingState.isStreaming && !streamingState.streamedText && (
+      {/* Full-screen cinematic loading overlay for image/video analysis */}
+      {(analyzeMutation.isPending || (streamingState.isStreaming && !streamingState.streamedText)) && (
         <div className="fixed inset-0 z-50" data-testid="loading-overlay">
           <LoadingPearls 
-            statusMessage={streamingState.statusMessage} 
-            displayMessage={streamingState.displayMessage || "Analyzing DICOM Data"} 
+            statusMessage={analyzeMutation.isPending ? "analyzing" : streamingState.statusMessage} 
+            displayMessage={analyzeMutation.isPending ? "Analyzing Image" : (streamingState.displayMessage || "Analyzing DICOM Data")}
+            imageThumbnail={analyzeMutation.isPending && mediaType === "image" ? (selectedImage || undefined) : undefined}
+            fileName={analyzeMutation.isPending && mediaType === "image" ? (selectedFileName || undefined) : undefined}
           />
         </div>
       )}
