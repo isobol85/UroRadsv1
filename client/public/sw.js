@@ -1,10 +1,11 @@
-const CACHE_NAME = 'urorads-v1';
+const CACHE_NAME = 'urorads-v2';
 const STATIC_ASSETS = [
   '/',
   '/favicon.png',
   '/pwa-192x192.png',
   '/pwa-512x512.png',
-  '/apple-touch-icon.png'
+  '/apple-touch-icon.png',
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -72,10 +73,28 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match('/') || caches.match(request);
+        })
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
+    fetch(request)
+      .then((response) => {
         if (response.ok && response.type === 'basic') {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -83,7 +102,9 @@ self.addEventListener('fetch', (event) => {
           });
         }
         return response;
-      });
-    })
+      })
+      .catch(() => {
+        return caches.match(request);
+      })
   );
 });
