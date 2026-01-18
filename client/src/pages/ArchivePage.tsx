@@ -232,9 +232,12 @@ export default function ArchivePage() {
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/cases/${id}`);
+      return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+    onSuccess: (deletedId: string) => {
+      queryClient.setQueryData<Case[]>(["/api/cases"], (oldCases) => {
+        return oldCases ? oldCases.filter((c) => c.id !== deletedId) : [];
+      });
       toast({
         title: "Case deleted",
         description: "The case has been permanently removed from the archive.",
