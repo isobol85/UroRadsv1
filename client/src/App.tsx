@@ -27,7 +27,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <div className="flex flex-col h-[100dvh] w-full bg-background">
+        <div 
+          className="flex flex-col h-[100dvh] w-full bg-background"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
           <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <Router />
           </main>
