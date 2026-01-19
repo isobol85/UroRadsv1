@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCaseSchema, insertChatMessageSchema, insertChatSessionSchema } from "@shared/schema";
-import { generateExplanation, generateTitle, generateCategory, generateChatResponse, refineExplanation, testMultiImageCapability } from "./ai";
+import { generateExplanation, generateTitle, generateCategory, generateChatResponse, generateChatTitle, refineExplanation, testMultiImageCapability } from "./ai";
 import { getVideoInfo, compressVideo } from "./video";
 import { analyzeVideo } from "./video-analysis";
 import { z } from "zod";
@@ -243,13 +243,34 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/cases/:caseId/messages", async (req, res) => {
+  app.post("/api/cases/:caseId/messages", async (req: any, res) => {
     try {
       const validated = insertChatMessageSchema.parse({
         ...req.body,
         caseId: req.params.caseId,
       });
+      
+      if (!validated.sessionId) {
+        return res.status(400).json({ error: "sessionId is required for database-backed messages" });
+      }
+      
+      const session = await storage.getChatSession(validated.sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      const userId = req.user?.claims?.sub;
+      if (!userId || session.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized to write to this session" });
+      }
+      
       const message = await storage.createChatMessage(validated);
+      
+      if (validated.role === "user" && !session.title) {
+        generateChatTitle(validated.content)
+          .then(title => storage.updateChatSessionTitle(validated.sessionId!, title))
+          .catch(err => console.error("Failed to generate chat title:", err));
+      }
+      
       res.status(201).json(message);
     } catch (error) {
       if (error instanceof z.ZodError) {

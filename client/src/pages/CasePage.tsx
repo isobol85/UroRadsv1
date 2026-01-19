@@ -9,26 +9,46 @@ import { ChatBubble } from "@/components/ChatBubble";
 import { ExplanationCard } from "@/components/ExplanationCard";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingPearls } from "@/components/LoadingPearls";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { getChatMessages, saveChatMessage, cleanupExpiredChats, type LocalChatMessage } from "@/lib/chatStorage";
 import type { Case } from "@shared/schema";
 
 type ViewMode = "image" | "read";
 
+interface ChatSession {
+  id: string;
+  caseId: string;
+  userId: string;
+  title: string | null;
+}
+
+interface DbChatMessage {
+  id: string;
+  sessionId: string | null;
+  caseId: string;
+  role: "user" | "ai";
+  content: string;
+  createdAt: string;
+}
+
 export default function CasePage() {
   const [, params] = useRoute("/case/:id");
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
   const caseId = params?.id;
   
-  const [messages, setMessages] = useState<LocalChatMessage[]>([]);
+  const [localMessages, setLocalMessages] = useState<LocalChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [mode, setMode] = useState<ViewMode>("image");
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -41,14 +61,48 @@ export default function CasePage() {
     ? cases.find(c => c.id === caseId)
     : cases[0];
 
+  const { data: dbMessages = [], isLoading: messagesLoading } = useQuery<DbChatMessage[]>({
+    queryKey: ["/api/chat-sessions", currentSession?.id, "messages"],
+    queryFn: async () => {
+      if (!currentSession?.id) return [];
+      const res = await fetch(`/api/chat-sessions/${currentSession.id}/messages`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isAuthenticated && !!currentSession?.id,
+  });
+
   useEffect(() => {
     cleanupExpiredChats();
   }, []);
 
   useEffect(() => {
     if (currentCase?.id) {
-      const storedMessages = getChatMessages(currentCase.id);
-      setMessages(storedMessages);
+      if (isAuthenticated) {
+        fetch(`/api/cases/${currentCase.id}/chat-session`, {
+          method: "POST",
+          credentials: "include",
+        })
+          .then(res => res.ok ? res.json() : null)
+          .then(session => {
+            if (session) {
+              setCurrentSession(session);
+            } else {
+              setCurrentSession(null);
+              const storedMessages = getChatMessages(currentCase.id);
+              setLocalMessages(storedMessages);
+            }
+          })
+          .catch(() => {
+            setCurrentSession(null);
+            const storedMessages = getChatMessages(currentCase.id);
+            setLocalMessages(storedMessages);
+          });
+      } else {
+        setCurrentSession(null);
+        const storedMessages = getChatMessages(currentCase.id);
+        setLocalMessages(storedMessages);
+      }
       setMode("image");
       setIsTransitioning(false);
       setInputValue("");
@@ -56,9 +110,10 @@ export default function CasePage() {
         inputRef.current.style.height = 'auto';
       }
     } else {
-      setMessages([]);
+      setLocalMessages([]);
+      setCurrentSession(null);
     }
-  }, [currentCase?.id]);
+  }, [currentCase?.id, isAuthenticated]);
 
   useEffect(() => {
     if (mode === "read" && scrollRef.current) {
@@ -69,7 +124,7 @@ export default function CasePage() {
         }, 350);
       }
     }
-  }, [messages, mode]);
+  }, [localMessages, dbMessages, mode]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -84,6 +139,16 @@ export default function CasePage() {
     return () => window.visualViewport?.removeEventListener("resize", handleResize);
   }, []);
 
+  const messages: LocalChatMessage[] = isAuthenticated && currentSession
+    ? dbMessages.map(m => ({
+        id: m.id,
+        caseId: m.caseId,
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(m.createdAt).getTime(),
+      }))
+    : localMessages;
+
   const chatMutation = useMutation({
     mutationFn: async ({ userMessage, currentMessages }: { userMessage: string; currentMessages: LocalChatMessage[] }) => {
       const response = await apiRequest("POST", "/api/ai/chat", {
@@ -93,12 +158,22 @@ export default function CasePage() {
       });
       return response.json() as Promise<{ response: string }>;
     },
-    onSuccess: (data) => {
-      const aiMessage = saveChatMessage(currentCase!.id, {
-        role: "ai",
-        content: data.response,
-      });
-      setMessages(prev => [...prev, aiMessage]);
+    onSuccess: async (data) => {
+      if (isAuthenticated && currentSession) {
+        await apiRequest("POST", `/api/cases/${currentCase!.id}/messages`, {
+          sessionId: currentSession.id,
+          role: "ai",
+          content: data.response,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/chat-sessions", currentSession.id, "messages"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/chat-sessions"] });
+      } else {
+        const aiMessage = saveChatMessage(currentCase!.id, {
+          role: "ai",
+          content: data.response,
+        });
+        setLocalMessages(prev => [...prev, aiMessage]);
+      }
     },
     onError: () => {
       toast({
@@ -109,7 +184,7 @@ export default function CasePage() {
     },
   });
 
-  const isLoading = chatMutation.isPending;
+  const isLoading = chatMutation.isPending || messagesLoading;
 
   const handleModeChange = (newMode: ViewMode) => {
     if (isTransitioning || mode === newMode) return;
@@ -156,12 +231,30 @@ export default function CasePage() {
 
     const userInput = inputValue.trim();
     
-    const userMessage = saveChatMessage(currentCase.id, {
-      role: "user",
-      content: userInput,
-    });
+    let userMessage: LocalChatMessage;
+    
+    if (isAuthenticated && currentSession) {
+      await apiRequest("POST", `/api/cases/${currentCase.id}/messages`, {
+        sessionId: currentSession.id,
+        role: "user",
+        content: userInput,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/chat-sessions", currentSession.id, "messages"] });
+      
+      userMessage = {
+        id: Date.now().toString(),
+        role: "user",
+        content: userInput,
+        timestamp: Date.now(),
+      };
+    } else {
+      userMessage = saveChatMessage(currentCase.id, {
+        role: "user",
+        content: userInput,
+      });
+      setLocalMessages(prev => [...prev, userMessage]);
+    }
 
-    setMessages(prev => [...prev, userMessage]);
     setInputValue("");
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
@@ -205,25 +298,6 @@ export default function CasePage() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
-        <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold" data-testid="text-app-title">UroRads</h1>
-          <span className="text-sm text-muted-foreground" data-testid="text-case-number">
-            Case #{currentCase.caseNumber}
-          </span>
-        </div>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={handleNextCase}
-          className="gap-1"
-          data-testid="button-next-case"
-        >
-          Next
-          <ChevronRight className="w-4 h-4" />
-        </Button>
-      </header>
-
       <div 
         ref={containerRef}
         className="flex-1 flex flex-col min-h-0 overflow-hidden relative"
@@ -238,7 +312,22 @@ export default function CasePage() {
           aria-hidden={!isImageMode}
           onTransitionEnd={isImageMode ? handleTransitionEnd : undefined}
         >
-          <div className="flex-1 flex flex-col p-4 min-h-0">
+          <div className="flex items-center justify-between px-4 py-2 shrink-0">
+            <span className="text-sm font-medium text-muted-foreground" data-testid="text-case-number">
+              Case #{currentCase.caseNumber}
+            </span>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={handleNextCase}
+              className="gap-1 h-8"
+              data-testid="button-next-case"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+          <div className="flex-1 flex flex-col px-4 pb-4 min-h-0">
             {currentCase.mediaType === "video" && currentCase.videoUrl ? (
               <div className="flex-1 flex items-center justify-center rounded-md overflow-hidden bg-black/5 dark:bg-white/5">
                 <video

@@ -241,6 +241,26 @@ export async function generateCategory(explanation: string): Promise<string> {
   return validCategories.includes(category) ? category : "Other";
 }
 
+const SYSTEM_PROMPT_CHAT_TITLE = `Generate a very short (3-4 word maximum) title that summarizes what this chat conversation is about.
+The title should capture the main topic or question being discussed.
+Return ONLY the title, no quotes, no punctuation, no other text.
+
+Examples:
+- "Stent placement timing"
+- "Hydronephrosis grading criteria"
+- "Calculus vs mass differentiation"`;
+
+export async function generateChatTitle(userMessage: string): Promise<string> {
+  const prompt = `${SYSTEM_PROMPT_CHAT_TITLE}\n\nUser's question:\n${userMessage}`;
+  try {
+    const title = await callGeminiText(prompt, GEMINI_PRO);
+    return title.trim().slice(0, 50) || "General discussion";
+  } catch (error) {
+    console.error("Failed to generate chat title:", error);
+    return "General discussion";
+  }
+}
+
 export async function generateChatResponse(
   explanation: string,
   chatHistory: Array<{ role: string; content: string }>,
