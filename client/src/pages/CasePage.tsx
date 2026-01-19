@@ -37,15 +37,18 @@ interface DbChatMessage {
 
 export default function CasePage() {
   const [, params] = useRoute("/case/:id");
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
   const caseId = params?.id;
   
+  const urlParams = new URLSearchParams(location.split("?")[1] || "");
+  const initialView = urlParams.get("view") === "read" ? "read" : "image";
+  
   const [localMessages, setLocalMessages] = useState<LocalChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [mode, setMode] = useState<ViewMode>("image");
+  const [mode, setMode] = useState<ViewMode>(initialView);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
@@ -103,7 +106,7 @@ export default function CasePage() {
         const storedMessages = getChatMessages(currentCase.id);
         setLocalMessages(storedMessages);
       }
-      setMode("image");
+      setMode(initialView);
       setIsTransitioning(false);
       setInputValue("");
       if (inputRef.current) {
@@ -113,7 +116,7 @@ export default function CasePage() {
       setLocalMessages([]);
       setCurrentSession(null);
     }
-  }, [currentCase?.id, isAuthenticated]);
+  }, [currentCase?.id, isAuthenticated, initialView]);
 
   useEffect(() => {
     if (mode === "read" && scrollRef.current) {

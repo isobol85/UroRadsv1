@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, MessageSquare, X } from "lucide-react";
+import { Search, MessageSquare } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -45,7 +45,7 @@ export function ChatSidebar({ open, onOpenChange }: ChatSidebarProps) {
   });
 
   const handleSessionClick = (session: ChatSession) => {
-    setLocation(`/case/${session.caseId}`);
+    setLocation(`/case/${session.caseId}?view=read`);
     onOpenChange(false);
   };
 
@@ -65,17 +65,7 @@ export function ChatSidebar({ open, onOpenChange }: ChatSidebarProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-80 p-0 flex flex-col">
         <SheetHeader className="p-4 border-b">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="text-lg font-semibold">Chat History</SheetTitle>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={() => onOpenChange(false)}
-              data-testid="button-close-sidebar"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+          <SheetTitle className="text-lg font-semibold">Chat History</SheetTitle>
           {isAuthenticated && (
             <div className="relative mt-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
