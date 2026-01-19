@@ -1,10 +1,12 @@
+import { useState } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BottomNav } from "@/components/BottomNav";
-import { UserMenu } from "@/components/UserMenu";
+import { TopHeader } from "@/components/TopHeader";
+import { ChatSidebar } from "@/components/ChatSidebar";
 import CasePage from "@/pages/CasePage";
 import ArchivePage from "@/pages/ArchivePage";
 import AddCasePage from "@/pages/AddCasePage";
@@ -27,6 +29,8 @@ function Router() {
 }
 
 function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -34,11 +38,13 @@ function App() {
           className="flex flex-col h-[100dvh] w-full bg-background"
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
+          <TopHeader onMenuClick={() => setSidebarOpen(true)} />
           <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <Router />
           </main>
           <BottomNav />
         </div>
+        <ChatSidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

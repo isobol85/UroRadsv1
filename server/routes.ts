@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCaseSchema, insertChatMessageSchema } from "@shared/schema";
+import { insertCaseSchema, insertChatMessageSchema, insertChatSessionSchema } from "@shared/schema";
 import { generateExplanation, generateTitle, generateCategory, generateChatResponse, refineExplanation, testMultiImageCapability } from "./ai";
 import { getVideoInfo, compressVideo } from "./video";
 import { analyzeVideo } from "./video-analysis";
@@ -257,6 +257,116 @@ export async function registerRoutes(
       }
       console.error("Error creating message:", error);
       res.status(500).json({ error: "Failed to create message" });
+    }
+  });
+
+  // Chat session endpoints - requires authentication
+  app.get("/api/chat-sessions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const sessions = await storage.getChatSessionsForUser(userId);
+      res.json(sessions);
+    } catch (error) {
+      console.error("Error fetching chat sessions:", error);
+      res.status(500).json({ error: "Failed to fetch chat sessions" });
+    }
+  });
+
+  app.get("/api/chat-sessions/search", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const query = String(req.query.q || "");
+      if (!query.trim()) {
+        const sessions = await storage.getChatSessionsForUser(userId);
+        return res.json(sessions);
+      }
+      const sessions = await storage.searchChatSessions(userId, query);
+      res.json(sessions);
+    } catch (error) {
+      console.error("Error searching chat sessions:", error);
+      res.status(500).json({ error: "Failed to search chat sessions" });
+    }
+  });
+
+  app.get("/api/chat-sessions/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const session = await storage.getChatSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      if (session.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      res.json(session);
+    } catch (error) {
+      console.error("Error fetching chat session:", error);
+      res.status(500).json({ error: "Failed to fetch chat session" });
+    }
+  });
+
+  app.get("/api/chat-sessions/:id/messages", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const session = await storage.getChatSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      if (session.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      const messages = await storage.getChatMessagesBySession(req.params.id);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching session messages:", error);
+      res.status(500).json({ error: "Failed to fetch session messages" });
+    }
+  });
+
+  app.post("/api/cases/:caseId/chat-session", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const caseId = req.params.caseId;
+      const case_ = await storage.getCase(caseId);
+      if (!case_) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+      const session = await storage.getOrCreateChatSession(caseId, userId);
+      res.json(session);
+    } catch (error) {
+      console.error("Error creating chat session:", error);
+      res.status(500).json({ error: "Failed to create chat session" });
+    }
+  });
+
+  app.patch("/api/chat-sessions/:id/title", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const session = await storage.getChatSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      if (session.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      const { title } = req.body;
+      if (!title || typeof title !== "string") {
+        return res.status(400).json({ error: "Title is required" });
+      }
+      const updated = await storage.updateChatSessionTitle(req.params.id, title);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating chat session title:", error);
+      res.status(500).json({ error: "Failed to update chat session title" });
     }
   });
 

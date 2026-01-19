@@ -29,8 +29,27 @@ export const insertCaseSchema = createInsertSchema(cases).omit({
 export type InsertCase = z.infer<typeof insertCaseSchema>;
 export type Case = typeof cases.$inferSelect;
 
+export const chatSessions = pgTable("chat_sessions", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  caseId: varchar("case_id", { length: 36 }).notNull().references(() => cases.id, { onDelete: "cascade" }),
+  userId: varchar("user_id", { length: 255 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title"), // AI-generated 3-word title, null until generated
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertChatSessionSchema = createInsertSchema(chatSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertChatSession = z.infer<typeof insertChatSessionSchema>;
+export type ChatSession = typeof chatSessions.$inferSelect;
+
 export const chatMessages = pgTable("chat_messages", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  sessionId: varchar("session_id", { length: 36 }).references(() => chatSessions.id, { onDelete: "cascade" }),
   caseId: varchar("case_id", { length: 36 }).notNull(),
   role: text("role").notNull(),
   content: text("content").notNull(),
