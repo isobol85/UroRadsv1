@@ -41,19 +41,26 @@ Main tables:
 - **users**: User accounts with flexible auth (id, displayName, email, avatarUrl, authProvider, authProviderId, isAdmin, createdAt)
 
 ### Authentication System
-- **Dual login options**: Replit Auth SSO (Google login) + simple username-only login
-- **First user becomes admin**: First user to register automatically gets admin privileges
-- **Session management**: Express-session with PostgreSQL storage, 1-week expiry
+- **Dual login options**: 
+  - Replit Auth SSO (Google login) - Server-side sessions, 10-year expiry
+  - Username-only login - Server-side sessions (same as SSO), 10-year expiry
+- **First SSO user becomes admin**: First user to register via SSO automatically gets admin privileges
+- **Session management**: 
+  - Both SSO and username users use Express-session with PostgreSQL storage
+  - Session TTL: 10 years (frictionless experience - sessions never expire for practical purposes)
+  - Username users are persisted in the database and get secure server sessions
+  - Username users can never be admin (enforced server-side for security)
 - **Permission model**:
   - View cases: Public (no login required)
   - Add cases: Login required (any authenticated user)
   - Edit/Delete cases: Owner OR admin only
 - **Frontend auth hook**: `client/src/hooks/use-auth.ts`
 - **Auth storage**: `server/replit_integrations/auth/storage.ts`
+- **LocalStorage key**: `urorads_local_user` (cache only - server session is authoritative)
 - **Auth endpoints**:
-  - `GET /api/auth/user` - Get current user
-  - `POST /api/auth/username-login` - Login with username only
-  - `POST /api/auth/logout` - Logout
+  - `GET /api/auth/user` - Get current authenticated user
+  - `POST /api/auth/username-login` - Login with username (creates user and session)
+  - `GET /api/logout` - Logout user
 
 ### Chat Storage (Local)
 - Chat messages are stored in browser localStorage (no login required)

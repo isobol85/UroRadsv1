@@ -7,6 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
+import { setLocalUser } from "@/hooks/use-auth";
+import type { User } from "@shared/models/auth";
 
 export default function LoginPage() {
   const [displayName, setDisplayName] = useState("");
@@ -16,9 +18,11 @@ export default function LoginPage() {
   const loginMutation = useMutation({
     mutationFn: async (name: string) => {
       const response = await apiRequest("POST", "/api/auth/username-login", { displayName: name });
-      return response.json();
+      return response.json() as Promise<User>;
     },
-    onSuccess: () => {
+    onSuccess: (user: User) => {
+      // Cache user in localStorage for quick access
+      setLocalUser(user);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       window.location.href = "/add";
     },

@@ -19,7 +19,7 @@ const getOidcConfig = memoize(
 );
 
 export function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  const sessionTtl = 10 * 365 * 24 * 60 * 60 * 1000; // 10 years - never expire for frictionless experience
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
@@ -131,9 +131,20 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // Check for session-based auth (both SSO and username users)
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated() || !user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  // Username users have no refresh token - just check if authenticated
+  if (user.isUsernameUser) {
+    return next();
+  }
+
+  // SSO users need token expiry check
+  if (!user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 

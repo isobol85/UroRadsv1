@@ -82,40 +82,6 @@ export default function AddCasePage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
-  // Show login prompt if not authenticated
-  if (!authLoading && !isAuthenticated) {
-    return (
-      <div className="flex flex-col h-full">
-        <header className="flex items-center justify-center px-4 h-14 border-b border-border shrink-0">
-          <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
-        </header>
-
-        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
-          <div className="text-center space-y-2">
-            <h2 className="text-xl font-medium">Sign in to add cases</h2>
-            <p className="text-sm text-muted-foreground max-w-xs">
-              You need to be logged in to contribute cases to the database
-            </p>
-          </div>
-          <Link href="/login">
-            <Button size="lg" className="gap-2" data-testid="button-login-prompt">
-              <LogIn className="w-5 h-5" />
-              Sign In
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (authLoading) {
-    return (
-      <div className="flex flex-col h-full items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   useEffect(() => {
     if (mode === "read" && scrollRef.current) {
       const scrollContainer = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
@@ -421,6 +387,40 @@ export default function AddCasePage() {
 
   const isLoading = analyzeMutation.isPending || refineMutation.isPending || videoAnalyzeMutation.isPending || streamingState.isStreaming;
   const isSubmitting = submitMutation.isPending;
+
+  // Show login prompt if not authenticated (must be after all hooks)
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <div className="flex flex-col h-full">
+        <header className="flex items-center justify-center px-4 h-14 border-b border-border shrink-0">
+          <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-medium">Sign in to add cases</h2>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              You need to be logged in to contribute cases to the database
+            </p>
+          </div>
+          <Link href="/login">
+            <Button size="lg" className="gap-2" data-testid="button-login-prompt">
+              <LogIn className="w-5 h-5" />
+              Sign In
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();

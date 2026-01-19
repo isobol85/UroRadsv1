@@ -86,7 +86,7 @@ export async function registerRoutes(
   await setupAuth(app);
   registerAuthRoutes(app);
   
-  // Username-only login (alternative to SSO)
+  // Username-only login with secure server session
   app.post("/api/auth/username-login", async (req: any, res) => {
     try {
       const { displayName } = req.body;
@@ -95,19 +95,20 @@ export async function registerRoutes(
       }
       
       const userId = `username_${randomUUID()}`;
-      const userCount = await authStorage.getUserCount();
-      const isFirstUser = userCount === 0;
+      const sessionTtl = 10 * 365 * 24 * 60 * 60; // 10 years in seconds
       
+      // Create user in database (username users are never admin for security)
       const user = await authStorage.upsertUser({
         id: userId,
         displayName: displayName.trim(),
-        isAdmin: isFirstUser,
+        isAdmin: false,
       });
       
-      // Set session user
+      // Create secure server session (same session storage as SSO)
       req.login({
         claims: { sub: userId },
-        expires_at: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 1 week
+        expires_at: Math.floor(Date.now() / 1000) + sessionTtl,
+        isUsernameUser: true,
       }, (err: any) => {
         if (err) {
           console.error("Session error:", err);

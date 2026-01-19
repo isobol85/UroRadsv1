@@ -1,12 +1,37 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
 
+const LOCAL_USER_KEY = "urorads_local_user";
+
+export function getLocalUser(): User | null {
+  try {
+    const stored = localStorage.getItem(LOCAL_USER_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch {
+    localStorage.removeItem(LOCAL_USER_KEY);
+  }
+  return null;
+}
+
+export function setLocalUser(user: User): void {
+  localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(user));
+}
+
+export function clearLocalUser(): void {
+  localStorage.removeItem(LOCAL_USER_KEY);
+}
+
 async function fetchUser(): Promise<User | null> {
+  // Always check server session for authoritative user info
   const response = await fetch("/api/auth/user", {
     credentials: "include",
   });
 
   if (response.status === 401) {
+    // No server session - clear local cache
+    clearLocalUser();
     return null;
   }
 
@@ -14,11 +39,10 @@ async function fetchUser(): Promise<User | null> {
     throw new Error(`${response.status}: ${response.statusText}`);
   }
 
-  return response.json();
-}
-
-async function logout(): Promise<void> {
-  window.location.href = "/api/logout";
+  const user = await response.json();
+  // Cache user in localStorage
+  setLocalUser(user);
+  return user;
 }
 
 export function useAuth() {
@@ -31,7 +55,10 @@ export function useAuth() {
   });
 
   const logoutMutation = useMutation({
-    mutationFn: logout,
+    mutationFn: async () => {
+      clearLocalUser();
+      window.location.href = "/api/logout";
+    },
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/user"], null);
     },
