@@ -36,8 +36,24 @@ Preferred communication style: Simple, everyday language.
 - **Storage Interface**: DatabaseStorage implementation in `server/storage.ts`
 
 ### Database Schema
-Main table:
-- **cases**: Stores radiology teaching cases (id, caseNumber, title, imageUrl, explanation, category, attendingPrompt, createdAt)
+Main tables:
+- **cases**: Stores radiology teaching cases (id, caseNumber, title, imageUrl, explanation, category, attendingPrompt, createdBy, createdAt)
+- **users**: User accounts with flexible auth (id, displayName, email, avatarUrl, authProvider, authProviderId, isAdmin, createdAt)
+
+### Authentication System
+- **Dual login options**: Replit Auth SSO (Google login) + simple username-only login
+- **First user becomes admin**: First user to register automatically gets admin privileges
+- **Session management**: Express-session with PostgreSQL storage, 1-week expiry
+- **Permission model**:
+  - View cases: Public (no login required)
+  - Add cases: Login required (any authenticated user)
+  - Edit/Delete cases: Owner OR admin only
+- **Frontend auth hook**: `client/src/hooks/use-auth.ts`
+- **Auth storage**: `server/replit_integrations/auth/storage.ts`
+- **Auth endpoints**:
+  - `GET /api/auth/user` - Get current user
+  - `POST /api/auth/username-login` - Login with username only
+  - `POST /api/auth/logout` - Logout
 
 ### Chat Storage (Local)
 - Chat messages are stored in browser localStorage (no login required)
