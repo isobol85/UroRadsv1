@@ -45,6 +45,12 @@ export function ChatSidebar({ open, onOpenChange }: ChatSidebarProps) {
   });
 
   const handleSessionClick = (session: ChatSession) => {
+    // Set multiple signals for reliable read-mode navigation:
+    // 1. Query param - works for deep links, bookmarks, and cross-case navigation
+    // 2. sessionStorage - backup for cases where query params don't trigger re-render
+    // 3. Custom event - handles same-case navigation (when caseId doesn't change)
+    sessionStorage.setItem('urorads_open_in_read_mode', session.caseId);
+    window.dispatchEvent(new CustomEvent('urorads-open-chat', { detail: { caseId: session.caseId } }));
     setLocation(`/case/${session.caseId}?view=read`);
     onOpenChange(false);
   };

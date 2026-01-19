@@ -13,11 +13,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useUrlMode } from "@/hooks/use-url-mode";
 import { cn } from "@/lib/utils";
 import { getChatMessages, saveChatMessage, cleanupExpiredChats, type LocalChatMessage } from "@/lib/chatStorage";
 import type { Case } from "@shared/schema";
-
-type ViewMode = "image" | "read";
 
 interface ChatSession {
   id: string;
@@ -43,12 +42,9 @@ export default function CasePage() {
   const { isAuthenticated } = useAuth();
   const caseId = params?.id;
   
-  const urlParams = new URLSearchParams(location.split("?")[1] || "");
-  const initialView = urlParams.get("view") === "read" ? "read" : "image";
-  
   const [localMessages, setLocalMessages] = useState<LocalChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [mode, setMode] = useState<ViewMode>(initialView);
+  const [mode, setMode] = useUrlMode(location, "image");
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
@@ -79,6 +75,7 @@ export default function CasePage() {
     cleanupExpiredChats();
   }, []);
 
+  // Set up chat session when case changes
   useEffect(() => {
     if (currentCase?.id) {
       if (isAuthenticated) {
@@ -106,7 +103,6 @@ export default function CasePage() {
         const storedMessages = getChatMessages(currentCase.id);
         setLocalMessages(storedMessages);
       }
-      setMode(initialView);
       setIsTransitioning(false);
       setInputValue("");
       if (inputRef.current) {
@@ -116,7 +112,7 @@ export default function CasePage() {
       setLocalMessages([]);
       setCurrentSession(null);
     }
-  }, [currentCase?.id, isAuthenticated, initialView]);
+  }, [currentCase?.id, isAuthenticated, location]);
 
   useEffect(() => {
     if (mode === "read" && scrollRef.current) {

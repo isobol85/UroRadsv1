@@ -62,12 +62,24 @@ Main tables:
   - `POST /api/auth/username-login` - Login with username (creates user and session)
   - `GET /api/logout` - Logout user
 
-### Chat Storage (Local)
-- Chat messages are stored in browser localStorage (no login required)
-- Storage key format: `urorads_chat_{caseId}`
-- Auto-expires after 48 hours for privacy and cleanliness
-- Each case has its own separate chat history
-- Utility: `client/src/lib/chatStorage.ts`
+### Chat System
+- **Chat Sessions** (authenticated users): Stored in database with chat_sessions and chat_messages tables
+  - Each session has an AI-generated 3-word title after first AI response
+  - Sessions are linked to both user and case
+  - ChatSidebar shows searchable chat history
+- **Local Storage** (guests): Chat messages stored in browser localStorage
+  - Storage key format: `urorads_chat_{caseId}`
+  - Auto-expires after 48 hours for privacy and cleanliness
+  - Utility: `client/src/lib/chatStorage.ts`
+
+### URL-Based View Mode
+- **useUrlMode hook** (`client/src/hooks/use-url-mode.ts`): Centralized URL↔mode synchronization
+  - URL is the single source of truth for view mode
+  - Query param `?view=read` triggers read/explanation view
+  - Syncs with wouter location changes and browser back/forward
+  - sessionStorage used as fallback for navigation edge cases
+- **ChatSidebar navigation**: Clicking a chat session navigates to `/case/:id?view=read`
+  - Automatically expands explanation view and shows chat
 
 ### API Endpoints
 - `GET /api/cases` - List all cases
