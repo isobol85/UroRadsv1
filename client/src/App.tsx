@@ -4,10 +4,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BottomNav } from "@/components/BottomNav";
+import { UserMenu } from "@/components/UserMenu";
 import CasePage from "@/pages/CasePage";
 import ArchivePage from "@/pages/ArchivePage";
 import AddCasePage from "@/pages/AddCasePage";
 import EditCasePage from "@/pages/EditCasePage";
+import LoginPage from "@/pages/LoginPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +20,7 @@ function Router() {
       <Route path="/archive" component={ArchivePage} />
       <Route path="/add" component={AddCasePage} />
       <Route path="/edit/:id" component={EditCasePage} />
+      <Route path="/login" component={LoginPage} />
       <Route component={NotFound} />
     </Switch>
   );

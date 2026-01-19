@@ -20,6 +20,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion";
 import type { Case } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 function useIsTouchDevice() {
   const [isTouch, setIsTouch] = useState(false);
@@ -55,11 +56,12 @@ function getCategoryColor(category: string): string {
 
 interface SwipeableCaseItemProps {
   case_: Case;
+  canEdit: boolean;
   onDeleteClick: (case_: Case) => void;
   onEditClick: (case_: Case) => void;
 }
 
-function SwipeableCaseItem({ case_, onDeleteClick, onEditClick }: SwipeableCaseItemProps) {
+function SwipeableCaseItem({ case_, canEdit, onDeleteClick, onEditClick }: SwipeableCaseItemProps) {
   const isTouch = useIsTouchDevice();
   const x = useMotionValue(0);
   const actionOpacity = useTransform(x, [-60, 0], [1, 0]);
@@ -141,29 +143,42 @@ function SwipeableCaseItem({ case_, onDeleteClick, onEditClick }: SwipeableCaseI
           {caseContent}
         </Link>
         
-        <div 
-          className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 transition-all duration-200 ${
-            isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2 pointer-events-none'
-          }`}
-          style={{ visibility: isHovered ? 'visible' : 'hidden' }}
-        >
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={handleEditClick}
-            data-testid={`button-edit-${case_.id}`}
+        {canEdit && (
+          <div 
+            className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 transition-all duration-200 ${
+              isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2 pointer-events-none'
+            }`}
+            style={{ visibility: isHovered ? 'visible' : 'hidden' }}
           >
-            <Pencil className="w-4 h-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="destructive"
-            onClick={handleTrashClick}
-            data-testid={`button-delete-${case_.id}`}
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={handleEditClick}
+              data-testid={`button-edit-${case_.id}`}
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="destructive"
+              onClick={handleTrashClick}
+              data-testid={`button-delete-${case_.id}`}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Non-draggable version if user can't edit
+  if (!canEdit) {
+    return (
+      <div className="relative border-b border-border">
+        <Link href={`/case/${case_.id}`}>
+          {caseContent}
+        </Link>
       </div>
     );
   }
@@ -224,10 +239,19 @@ export default function ArchivePage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
+  const { user, isAuthenticated } = useAuth();
 
   const { data: cases = [], isLoading } = useQuery<Case[]>({
     queryKey: ["/api/cases"],
   });
+
+  // Calculate if user can edit a case: must be owner or admin
+  const canEditCase = (case_: Case): boolean => {
+    if (!isAuthenticated || !user) return false;
+    const isOwner = case_.createdBy === user.id;
+    const isAdmin = user.isAdmin === true;
+    return isOwner || isAdmin;
+  };
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -311,7 +335,8 @@ export default function ArchivePage() {
           {cases.map((case_) => (
             <SwipeableCaseItem 
               key={case_.id} 
-              case_={case_} 
+              case_={case_}
+              canEdit={canEditCase(case_)}
               onDeleteClick={handleDeleteClick}
               onEditClick={handleEditClick}
             />

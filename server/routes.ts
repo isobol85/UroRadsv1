@@ -10,6 +10,7 @@ import multer from "multer";
 import { objectStorageClient } from "./replit_integrations/object_storage";
 import { randomUUID } from "crypto";
 import seedData from "./seed-data.json";
+import { setupAuth, registerAuthRoutes, isAuthenticated, authStorage } from "./replit_integrations/auth";
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -81,6 +82,45 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
+  // Setup authentication FIRST before other routes
+  await setupAuth(app);
+  registerAuthRoutes(app);
+  
+  // Username-only login (alternative to SSO)
+  app.post("/api/auth/username-login", async (req: any, res) => {
+    try {
+      const { displayName } = req.body;
+      if (!displayName || typeof displayName !== "string" || displayName.trim().length < 2) {
+        return res.status(400).json({ error: "Display name must be at least 2 characters" });
+      }
+      
+      const userId = `username_${randomUUID()}`;
+      const userCount = await authStorage.getUserCount();
+      const isFirstUser = userCount === 0;
+      
+      const user = await authStorage.upsertUser({
+        id: userId,
+        displayName: displayName.trim(),
+        isAdmin: isFirstUser,
+      });
+      
+      // Set session user
+      req.login({
+        claims: { sub: userId },
+        expires_at: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60), // 1 week
+      }, (err: any) => {
+        if (err) {
+          console.error("Session error:", err);
+          return res.status(500).json({ error: "Failed to create session" });
+        }
+        res.json(user);
+      });
+    } catch (error) {
+      console.error("Username login error:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+  
   app.get("/api/cases", async (req, res) => {
     try {
       const cases = await storage.getCases();
@@ -104,10 +144,12 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/cases", async (req, res) => {
+  // Create case - requires authentication
+  app.post("/api/cases", isAuthenticated, async (req: any, res) => {
     try {
       const validated = insertCaseSchema.parse(req.body);
-      const case_ = await storage.createCase(validated);
+      const userId = req.user?.claims?.sub;
+      const case_ = await storage.createCase(validated, userId);
       res.status(201).json(case_);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -124,13 +166,27 @@ export async function registerRoutes(
     category: z.string().optional(),
   });
 
-  app.patch("/api/cases/:id", async (req, res) => {
+  // Update case - requires authentication + permission (owner or admin)
+  app.patch("/api/cases/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const validated = updateCaseSchema.parse(req.body);
-      const updated = await storage.updateCase(req.params.id, validated);
-      if (!updated) {
+      const userId = req.user?.claims?.sub;
+      const user = await authStorage.getUser(userId);
+      const case_ = await storage.getCase(req.params.id);
+      
+      if (!case_) {
         return res.status(404).json({ error: "Case not found" });
       }
+      
+      // Check permission: must be owner or admin
+      const isOwner = case_.createdBy === userId;
+      const isAdmin = user?.isAdmin === true;
+      
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ error: "You don't have permission to edit this case" });
+      }
+      
+      const validated = updateCaseSchema.parse(req.body);
+      const updated = await storage.updateCase(req.params.id, validated);
       res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -141,12 +197,23 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/cases/:id", async (req, res) => {
+  // Delete case - requires authentication + permission (owner or admin)
+  app.delete("/api/cases/:id", isAuthenticated, async (req: any, res) => {
     try {
-      // Get case first to check for video URL
+      const userId = req.user?.claims?.sub;
+      const user = await authStorage.getUser(userId);
       const caseToDelete = await storage.getCase(req.params.id);
+      
       if (!caseToDelete) {
         return res.status(404).json({ error: "Case not found" });
+      }
+      
+      // Check permission: must be owner or admin
+      const isOwner = caseToDelete.createdBy === userId;
+      const isAdmin = user?.isAdmin === true;
+      
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ error: "You don't have permission to delete this case" });
       }
       
       // Delete video from object storage if it exists

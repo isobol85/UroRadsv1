@@ -1,6 +1,9 @@
 import { pgTable, text, varchar, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { users } from "./models/auth";
+
+export * from "./models/auth";
 
 export const cases = pgTable("cases", {
   id: varchar("id", { length: 36 }).primaryKey(),
@@ -12,12 +15,14 @@ export const cases = pgTable("cases", {
   attendingPrompt: text("attending_prompt"),
   videoUrl: text("video_url"),
   mediaType: text("media_type").notNull().default("image"),
+  createdBy: varchar("created_by", { length: 255 }).references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertCaseSchema = createInsertSchema(cases).omit({
   id: true,
   caseNumber: true,
+  createdBy: true,
   createdAt: true,
 });
 

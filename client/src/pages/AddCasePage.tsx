@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Upload, Send, Loader2, Check, ChevronUp, Video } from "lucide-react";
+import { Upload, Send, Loader2, Check, ChevronUp, Video, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -9,9 +9,10 @@ import { LoadingPearls } from "@/components/LoadingPearls";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import type { Case } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Message {
   id: string;
@@ -52,6 +53,7 @@ type ViewMode = "image" | "read";
 type MediaType = "image" | "video";
 
 export default function AddCasePage() {
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
@@ -79,6 +81,40 @@ export default function AddCasePage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   const [, navigate] = useLocation();
+
+  // Show login prompt if not authenticated
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <div className="flex flex-col h-full">
+        <header className="flex items-center justify-center px-4 h-14 border-b border-border shrink-0">
+          <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-medium">Sign in to add cases</h2>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              You need to be logged in to contribute cases to the database
+            </p>
+          </div>
+          <Link href="/login">
+            <Button size="lg" className="gap-2" data-testid="button-login-prompt">
+              <LogIn className="w-5 h-5" />
+              Sign In
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (mode === "read" && scrollRef.current) {

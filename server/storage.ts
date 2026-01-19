@@ -8,7 +8,7 @@ export interface IStorage {
   getCase(id: string): Promise<Case | undefined>;
   getCaseByNumber(caseNumber: number): Promise<Case | undefined>;
   getNextCaseNumber(): Promise<number>;
-  createCase(case_: InsertCase): Promise<Case>;
+  createCase(case_: InsertCase, createdBy?: string): Promise<Case>;
   updateCase(id: string, updates: { title?: string; explanation?: string; category?: string }): Promise<Case | undefined>;
   deleteCase(id: string): Promise<boolean>;
   getChatMessages(caseId: string): Promise<ChatMessage[]>;
@@ -36,7 +36,7 @@ export class DatabaseStorage implements IStorage {
     return (result[0]?.max || 0) + 1;
   }
 
-  async createCase(insertCase: InsertCase): Promise<Case> {
+  async createCase(insertCase: InsertCase, createdBy?: string): Promise<Case> {
     const id = randomUUID();
     const caseNumber = await this.getNextCaseNumber();
     const [case_] = await db
@@ -51,6 +51,7 @@ export class DatabaseStorage implements IStorage {
         attendingPrompt: insertCase.attendingPrompt ?? null,
         videoUrl: insertCase.videoUrl ?? null,
         mediaType: insertCase.mediaType ?? "image",
+        createdBy: createdBy ?? null,
       })
       .returning();
     return case_;
