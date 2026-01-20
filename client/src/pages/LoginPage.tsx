@@ -9,7 +9,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 import { setLocalUser } from "@/hooks/use-auth";
 import type { User } from "@shared/models/auth";
-import { SiGoogle, SiApple, SiX, SiGithub } from "react-icons/si";
+import { SiGoogle } from "react-icons/si";
 import loginBg from "@assets/image_1768855969810.png";
 
 export default function LoginPage() {
@@ -74,7 +74,7 @@ export default function LoginPage() {
             <CardTitle>Welcome to UroRads</CardTitle>
             <CardDescription>Sign in to add cases to the database</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             <Button 
               className="w-full bg-white text-gray-800 border border-gray-300" 
               onClick={handleSSOLogin}
@@ -82,33 +82,6 @@ export default function LoginPage() {
             >
               <SiGoogle className="w-4 h-4 mr-2" style={{ color: '#4285F4' }} />
               Sign in with Google
-            </Button>
-
-            <Button 
-              className="w-full bg-black text-white" 
-              onClick={handleSSOLogin}
-              data-testid="button-sso-apple"
-            >
-              <SiApple className="w-4 h-4 mr-2" />
-              Sign in with Apple
-            </Button>
-
-            <Button 
-              className="w-full bg-black text-white" 
-              onClick={handleSSOLogin}
-              data-testid="button-sso-x"
-            >
-              <SiX className="w-4 h-4 mr-2" />
-              Sign in with X
-            </Button>
-
-            <Button 
-              className="w-full bg-[#24292e] text-white" 
-              onClick={handleSSOLogin}
-              data-testid="button-sso-github"
-            >
-              <SiGithub className="w-4 h-4 mr-2" />
-              Sign in with GitHub
             </Button>
             
             <div className="relative py-2">
@@ -120,7 +93,7 @@ export default function LoginPage() {
 
             <form onSubmit={handleUsernameLogin} className="space-y-3">
               <Input
-                placeholder="Enter your name"
+                placeholder="Enter your first name"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 disabled={loginMutation.isPending}
@@ -136,13 +109,9 @@ export default function LoginPage() {
                 {loginMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 ) : null}
-                Continue with Name
+                Continue
               </Button>
             </form>
-
-            <p className="text-xs text-muted-foreground text-center">
-              SSO provides better identity verification than using just your name.
-            </p>
           </CardContent>
         </Card>
       </div>
