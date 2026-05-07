@@ -128,7 +128,10 @@ export default function CasePage() {
     return () => {
       cancelled = true;
     };
-  }, [currentCase?.id, isAuthenticated, location]);
+    // Intentionally NOT including `location` — mode toggles update the URL
+    // query (?view=read) and must not re-bootstrap the chat session, which
+    // would briefly blank the message list.
+  }, [currentCase?.id, isAuthenticated]);
 
   useEffect(() => {
     if (mode === "read" && scrollRef.current) {
