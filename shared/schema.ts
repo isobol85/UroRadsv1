@@ -5,6 +5,11 @@ import { users } from "./models/auth";
 
 export * from "./models/auth";
 
+export const counters = pgTable("counters", {
+  name: varchar("name", { length: 64 }).primaryKey(),
+  value: integer("value").notNull().default(0),
+});
+
 export const cases = pgTable("cases", {
   id: varchar("id", { length: 36 }).primaryKey(),
   caseNumber: integer("case_number").notNull(),

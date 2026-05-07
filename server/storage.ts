@@ -1,6 +1,6 @@
-import { cases, chatMessages, chatSessions, type Case, type InsertCase, type ChatMessage, type InsertChatMessage, type ChatSession, type InsertChatSession } from "@shared/schema";
+import { cases, chatMessages, chatSessions, counters, type Case, type InsertCase, type ChatMessage, type InsertChatMessage, type ChatSession, type InsertChatSession } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql, gt, and, ilike, or } from "drizzle-orm";
+import { eq, desc, sql, and, ilike, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -43,8 +43,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextCaseNumber(): Promise<number> {
-    const result = await db.select({ max: sql<number>`COALESCE(MAX(${cases.caseNumber}), 0)` }).from(cases);
-    return (result[0]?.max || 0) + 1;
+    const result = await db.execute(sql`
+      INSERT INTO counters (name, value)
+      VALUES (
+        'case_number',
+        GREATEST(COALESCE((SELECT MAX(case_number) FROM cases), 0), 0) + 1
+      )
+      ON CONFLICT (name) DO UPDATE
+        SET value = GREATEST(
+          counters.value,
+          COALESCE((SELECT MAX(case_number) FROM cases), 0)
+        ) + 1
+      RETURNING value
+    `);
+    const rows = (result as unknown as { rows: Array<{ value: number }> }).rows;
+    return Number(rows[0].value);
   }
 
   async createCase(insertCase: InsertCase, createdBy?: string): Promise<Case> {
@@ -96,20 +109,11 @@ export class DatabaseStorage implements IStorage {
     if (!caseToDelete) {
       return false;
     }
-    
-    const deletedCaseNumber = caseToDelete.caseNumber;
-    
+
     await this.deleteChatMessages(id);
     const result = await db.delete(cases).where(eq(cases.id, id)).returning();
-    
-    if (result.length > 0) {
-      await db
-        .update(cases)
-        .set({ caseNumber: sql`${cases.caseNumber} - 1` })
-        .where(gt(cases.caseNumber, deletedCaseNumber));
-      return true;
-    }
-    return false;
+
+    return result.length > 0;
   }
 
   // Chat session methods
