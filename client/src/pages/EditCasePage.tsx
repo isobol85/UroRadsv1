@@ -163,10 +163,13 @@ export default function EditCasePage() {
       inputRef.current.style.height = 'auto';
     }
 
+    const isVideo = caseData.mediaType === "video";
     refineMutation.mutate({
       imageBase64: caseData.imageUrl,
       currentExplanation,
-      feedback: userInput,
+      feedback: isVideo
+        ? `${userInput}\n\n(Note: source media is a CT video; the attached image is a representative thumbnail frame.)`
+        : userInput,
     });
   };
 

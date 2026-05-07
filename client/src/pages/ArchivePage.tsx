@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
-import { FolderOpen, Loader2, Trash2, Pencil } from "lucide-react";
+import { FolderOpen, Loader2, Trash2, Pencil, Search, MessageSquare, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingPearls } from "@/components/LoadingPearls";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -239,10 +240,39 @@ export default function ArchivePage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const { user, isAuthenticated } = useAuth();
 
   const { data: cases = [], isLoading } = useQuery<Case[]>({
     queryKey: ["/api/cases"],
+  });
+
+  const trimmedQuery = searchQuery.trim();
+
+  const filteredCases = useMemo(() => {
+    if (!trimmedQuery) return cases;
+    const q = trimmedQuery.toLowerCase();
+    return cases.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.category.toLowerCase().includes(q) ||
+        String(c.caseNumber).includes(q),
+    );
+  }, [cases, trimmedQuery]);
+
+  const { data: matchingChats = [] } = useQuery<
+    Array<{ id: string; caseId: string; title: string | null; caseName: string }>
+  >({
+    queryKey: ["/api/chat-sessions/search", trimmedQuery],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/chat-sessions/search?q=${encodeURIComponent(trimmedQuery)}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isAuthenticated && trimmedQuery.length > 0,
   });
 
   // Calculate if user can edit a case: must be owner or admin
@@ -326,21 +356,79 @@ export default function ArchivePage() {
           <h1 className="text-lg font-semibold" data-testid="text-archive-title">Archive</h1>
         </div>
         <span className="text-sm text-muted-foreground" data-testid="text-case-count">
-          {cases.length} {cases.length === 1 ? "case" : "cases"}
+          {trimmedQuery
+            ? `${filteredCases.length} of ${cases.length}`
+            : `${cases.length} ${cases.length === 1 ? "case" : "cases"}`}
         </span>
       </header>
 
+      <div className="px-4 py-2 border-b border-border shrink-0">
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search cases by title or category..."
+            className="pl-9 pr-9 h-9"
+            data-testid="input-archive-search"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+              data-testid="button-clear-search"
+              aria-label="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
       <ScrollArea className="flex-1">
         <div className="pb-20">
-          {cases.map((case_) => (
-            <SwipeableCaseItem 
-              key={case_.id} 
-              case_={case_}
-              canEdit={canEditCase(case_)}
-              onDeleteClick={handleDeleteClick}
-              onEditClick={handleEditClick}
-            />
-          ))}
+          {filteredCases.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-muted-foreground" data-testid="text-no-results">
+              No cases match "{trimmedQuery}"
+            </div>
+          ) : (
+            filteredCases.map((case_) => (
+              <SwipeableCaseItem
+                key={case_.id}
+                case_={case_}
+                canEdit={canEditCase(case_)}
+                onDeleteClick={handleDeleteClick}
+                onEditClick={handleEditClick}
+              />
+            ))
+          )}
+
+          {isAuthenticated && trimmedQuery && matchingChats.length > 0 && (
+            <div className="mt-4 border-t border-border">
+              <div className="px-4 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Matching chats
+              </div>
+              {matchingChats.map((chat) => (
+                <Link
+                  key={chat.id}
+                  href={`/case/${chat.caseId}?view=read`}
+                  className="flex items-center gap-3 px-4 py-3 border-b border-border hover-elevate active-elevate-2"
+                  data-testid={`chat-result-${chat.id}`}
+                >
+                  <MessageSquare className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">
+                      {chat.title || "Untitled chat"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {chat.caseName}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </ScrollArea>
 

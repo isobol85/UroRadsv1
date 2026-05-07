@@ -17,6 +17,28 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB max
 });
 
+// Convert an http(s) image URL to a base64 data URL so AI helpers receive consistent input.
+// Only allows fetches against our own object-storage host to avoid SSRF.
+const ALLOWED_IMAGE_HOSTS = new Set(["storage.googleapis.com"]);
+async function normalizeImageInput(input: string): Promise<string> {
+  if (input.startsWith("data:")) return input;
+  if (!/^https?:\/\//i.test(input)) return input;
+  let parsed: URL;
+  try {
+    parsed = new URL(input);
+  } catch {
+    throw new Error("Invalid image URL");
+  }
+  if (parsed.protocol !== "https:" || !ALLOWED_IMAGE_HOSTS.has(parsed.hostname)) {
+    throw new Error("Image URL host not allowed");
+  }
+  const res = await fetch(parsed.toString());
+  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const mime = res.headers.get("content-type") || "image/jpeg";
+  return `data:${mime};base64,${buf.toString("base64")}`;
+}
+
 // Upload video to object storage and return the public URL
 async function uploadVideoToStorage(videoBuffer: Buffer, filename: string): Promise<string> {
   const publicSearchPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS;
@@ -161,11 +183,9 @@ export async function registerRoutes(
     }
   });
 
-  const updateCaseSchema = z.object({
-    title: z.string().optional(),
-    explanation: z.string().optional(),
-    category: z.string().optional(),
-  });
+  const updateCaseSchema = insertCaseSchema
+    .pick({ title: true, explanation: true, category: true })
+    .partial();
 
   // Update case - requires authentication + permission (owner or admin)
   app.patch("/api/cases/:id", isAuthenticated, async (req: any, res) => {
@@ -399,8 +419,8 @@ export async function registerRoutes(
   app.post("/api/ai/analyze", async (req, res) => {
     try {
       const { imageBase64, attendingPrompt } = analyzeImageSchema.parse(req.body);
-      
-      const explanation = await generateExplanation(imageBase64, attendingPrompt);
+      const normalized = await normalizeImageInput(imageBase64);
+      const explanation = await generateExplanation(normalized, attendingPrompt);
       const [title, category] = await Promise.all([
         generateTitle(explanation),
         generateCategory(explanation),
@@ -425,8 +445,8 @@ export async function registerRoutes(
   app.post("/api/ai/refine", async (req, res) => {
     try {
       const { imageBase64, currentExplanation, feedback } = refineSchema.parse(req.body);
-      
-      const explanation = await refineExplanation(imageBase64, currentExplanation, feedback);
+      const normalized = await normalizeImageInput(imageBase64);
+      const explanation = await refineExplanation(normalized, currentExplanation, feedback);
       const [title, category] = await Promise.all([
         generateTitle(explanation),
         generateCategory(explanation),

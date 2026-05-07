@@ -557,7 +557,9 @@ export default function AddCasePage() {
     refineMutation.mutate({
       imageBase64: selectedImage!,
       currentExplanation,
-      feedback: userInput,
+      feedback: mediaType === "video"
+        ? `${userInput}\n\n(Note: source media is a CT video; the attached image is a representative thumbnail frame.)`
+        : userInput,
     });
   };
 

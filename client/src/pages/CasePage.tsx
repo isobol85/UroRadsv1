@@ -138,7 +138,12 @@ export default function CasePage() {
     return () => window.visualViewport?.removeEventListener("resize", handleResize);
   }, []);
 
-  const messages: LocalChatMessage[] = isAuthenticated && currentSession
+  // Single source of truth: if the user is authenticated AND we have a session,
+  // always use server-backed messages (even while loading => empty list, no flicker
+  // back to local cache). Only fall back to local when truly unauthenticated or
+  // the session lookup explicitly failed (currentSession stays null).
+  const useServerMessages = isAuthenticated && !!currentSession;
+  const messages: LocalChatMessage[] = useServerMessages
     ? dbMessages.map(m => ({
         id: m.id,
         caseId: m.caseId,
@@ -185,7 +190,7 @@ export default function CasePage() {
 
   const isLoading = chatMutation.isPending || messagesLoading;
 
-  const handleModeChange = (newMode: ViewMode) => {
+  const handleModeChange = (newMode: "image" | "read") => {
     if (isTransitioning || mode === newMode) return;
     setIsTransitioning(true);
     setMode(newMode);
@@ -330,7 +335,7 @@ export default function CasePage() {
             {currentCase.mediaType === "video" && currentCase.videoUrl ? (
               <div className="flex-1 flex items-center justify-center rounded-md overflow-hidden bg-black/5 dark:bg-white/5">
                 <video
-                  src={`/api/videos/${currentCase.id}/stream`}
+                  src={currentCase.videoUrl}
                   controls
                   preload="metadata"
                   poster={currentCase.imageUrl}
