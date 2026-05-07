@@ -250,6 +250,10 @@ export default function CasePage() {
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
+    // Don't allow sending while the authenticated chat session is still
+    // bootstrapping — otherwise the message would be written to the local
+    // cache and then disappear once the server session resolves.
+    if (isAuthenticated && sessionStatus === "loading") return;
 
     const userInput = inputValue.trim();
     
@@ -465,14 +469,14 @@ export default function CasePage() {
                 onKeyDown={handleKeyDown}
                 placeholder="Ask a follow-up question..."
                 className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2"
-                disabled={isLoading}
+                disabled={isLoading || (isAuthenticated && sessionStatus === "loading")}
                 rows={1}
                 data-testid="input-chat"
               />
               <Button 
                 size="icon" 
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading}
+                disabled={!inputValue.trim() || isLoading || (isAuthenticated && sessionStatus === "loading")}
                 data-testid="button-send"
               >
                 <Send className="w-4 h-4" />
