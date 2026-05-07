@@ -52,7 +52,13 @@ async function uploadVideoToStorage(videoBuffer: Buffer, filename: string): Prom
     throw new Error("No public directories configured");
   }
   
-  const objectId = `videos/${randomUUID()}-${filename}`;
+  // ffmpeg always outputs H.264 MP4, so force a .mp4 extension on the stored
+  // object name regardless of the user's original filename (e.g. .mov / .webm).
+  // This keeps the object name consistent with its actual content type and
+  // avoids client-side extension sniffing surprises (notably on iOS).
+  const baseName = filename.replace(/\.[^./\\]+$/, "") || "video";
+  const safeBase = baseName.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 80);
+  const objectId = `videos/${randomUUID()}-${safeBase}.mp4`;
   const fullPath = `${publicDir}/${objectId}`;
   
   // Parse bucket and object name from path

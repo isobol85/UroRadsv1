@@ -362,6 +362,7 @@ export default function CasePage() {
                 <video
                   src={currentCase.videoUrl}
                   controls
+                  playsInline
                   preload="metadata"
                   poster={currentCase.imageUrl}
                   className="max-w-full max-h-full object-contain"

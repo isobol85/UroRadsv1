@@ -657,6 +657,8 @@ export default function AddCasePage() {
                 <video
                   src={selectedVideoUrl}
                   controls
+                  playsInline
+                  preload="metadata"
                   className="max-w-full max-h-full object-contain"
                   data-testid="video-preview"
                 />
@@ -735,6 +737,8 @@ export default function AddCasePage() {
                         src={selectedVideoUrl}
                         className="w-full h-full object-contain bg-black/5 dark:bg-white/5"
                         muted
+                        playsInline
+                        preload="metadata"
                       />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                         <Video className="w-5 h-5 text-white" />
