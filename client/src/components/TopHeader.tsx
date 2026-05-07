@@ -1,4 +1,4 @@
-import { Menu, LogIn } from "lucide-react";
+import { Menu, LogIn, Users as UsersIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -65,6 +65,14 @@ export function TopHeader({ onMenuClick }: TopHeaderProps) {
                 <span className="ml-2 text-xs text-primary">(Admin)</span>
               )}
             </div>
+            {user.isAdmin && (
+              <Link href="/users">
+                <DropdownMenuItem data-testid="link-users">
+                  <UsersIcon className="w-4 h-4 mr-2" />
+                  Users
+                </DropdownMenuItem>
+              </Link>
+            )}
             <DropdownMenuItem onClick={() => logout()} data-testid="button-logout">
               <LogOut className="w-4 h-4 mr-2" />
               Sign Out

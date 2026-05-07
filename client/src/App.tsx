@@ -12,6 +12,7 @@ import ArchivePage from "@/pages/ArchivePage";
 import AddCasePage from "@/pages/AddCasePage";
 import EditCasePage from "@/pages/EditCasePage";
 import LoginPage from "@/pages/LoginPage";
+import UsersPage from "@/pages/UsersPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/add" component={AddCasePage} />
       <Route path="/edit/:id" component={EditCasePage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/users" component={UsersPage} />
       <Route component={NotFound} />
     </Switch>
   );

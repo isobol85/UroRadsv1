@@ -10,7 +10,7 @@ import multer from "multer";
 import { objectStorageClient } from "./replit_integrations/object_storage";
 import { randomUUID } from "crypto";
 import seedData from "./seed-data.json";
-import { setupAuth, registerAuthRoutes, isAuthenticated, authStorage } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, authStorage, isUsernameUserId } from "./replit_integrations/auth";
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -150,6 +150,64 @@ export async function registerRoutes(
     }
   });
   
+  // Admin middleware - requires authenticated admin user
+  const isAdmin = async (req: any, res: any, next: any) => {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    const user = await authStorage.getUser(userId);
+    if (!user?.isAdmin) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    next();
+  };
+
+  // List all users (admin only)
+  app.get("/api/admin/users", isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const users = await authStorage.listUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error listing users:", error);
+      res.status(500).json({ error: "Failed to list users" });
+    }
+  });
+
+  // Promote/demote a user (admin only)
+  app.patch("/api/admin/users/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const targetId = req.params.id;
+      const currentUserId = req.user?.claims?.sub;
+      const { isAdmin: makeAdmin } = req.body ?? {};
+
+      if (typeof makeAdmin !== "boolean") {
+        return res.status(400).json({ error: "isAdmin (boolean) is required" });
+      }
+
+      // Prevent admins from removing their own admin rights
+      if (targetId === currentUserId && makeAdmin === false) {
+        return res.status(400).json({ error: "You cannot remove your own admin rights" });
+      }
+
+      // Username-only users can never be admin
+      if (makeAdmin && isUsernameUserId(targetId)) {
+        return res.status(400).json({ error: "Username-only users cannot be granted admin rights" });
+      }
+
+      const target = await authStorage.getUser(targetId);
+      if (!target) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const updated = await authStorage.setUserAdmin(targetId, makeAdmin);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating user admin status:", error);
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
   app.get("/api/cases", async (req, res) => {
     try {
       const cases = await storage.getCases();
