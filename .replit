@@ -46,3 +46,7 @@ integrations = ["javascript_object_storage:2.0.0", "javascript_openai_ai_integra
 
 [userenv.shared]
 VIDEO_ANALYSIS_MODE = "legacy"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
