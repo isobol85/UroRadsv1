@@ -48,6 +48,7 @@ export default function CasePage() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<"idle" | "loading" | "ready" | "failed">("idle");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -77,41 +78,56 @@ export default function CasePage() {
 
   // Set up chat session when case changes
   useEffect(() => {
-    if (currentCase?.id) {
-      if (isAuthenticated) {
-        fetch(`/api/cases/${currentCase.id}/chat-session`, {
-          method: "POST",
-          credentials: "include",
-        })
-          .then(res => res.ok ? res.json() : null)
-          .then(session => {
-            if (session) {
-              setCurrentSession(session);
-            } else {
-              setCurrentSession(null);
-              const storedMessages = getChatMessages(currentCase.id);
-              setLocalMessages(storedMessages);
-            }
-          })
-          .catch(() => {
-            setCurrentSession(null);
-            const storedMessages = getChatMessages(currentCase.id);
-            setLocalMessages(storedMessages);
-          });
-      } else {
-        setCurrentSession(null);
-        const storedMessages = getChatMessages(currentCase.id);
-        setLocalMessages(storedMessages);
-      }
-      setIsTransitioning(false);
-      setInputValue("");
-      if (inputRef.current) {
-        inputRef.current.style.height = 'auto';
-      }
-    } else {
+    if (!currentCase?.id) {
       setLocalMessages([]);
       setCurrentSession(null);
+      setSessionStatus("idle");
+      return;
     }
+
+    let cancelled = false;
+    if (isAuthenticated) {
+      // Reset session state while we look it up so the render uses
+      // server-source (loading) instead of local-cache fallback.
+      setCurrentSession(null);
+      setSessionStatus("loading");
+      setLocalMessages([]);
+      fetch(`/api/cases/${currentCase.id}/chat-session`, {
+        method: "POST",
+        credentials: "include",
+      })
+        .then(res => (res.ok ? res.json() : null))
+        .then(session => {
+          if (cancelled) return;
+          if (session) {
+            setCurrentSession(session);
+            setSessionStatus("ready");
+          } else {
+            setCurrentSession(null);
+            setSessionStatus("failed");
+            setLocalMessages(getChatMessages(currentCase.id));
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setCurrentSession(null);
+          setSessionStatus("failed");
+          setLocalMessages(getChatMessages(currentCase.id));
+        });
+    } else {
+      setCurrentSession(null);
+      setSessionStatus("idle");
+      setLocalMessages(getChatMessages(currentCase.id));
+    }
+    setIsTransitioning(false);
+    setInputValue("");
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentCase?.id, isAuthenticated, location]);
 
   useEffect(() => {
@@ -138,11 +154,13 @@ export default function CasePage() {
     return () => window.visualViewport?.removeEventListener("resize", handleResize);
   }, []);
 
-  // Single source of truth: if the user is authenticated AND we have a session,
-  // always use server-backed messages (even while loading => empty list, no flicker
-  // back to local cache). Only fall back to local when truly unauthenticated or
-  // the session lookup explicitly failed (currentSession stays null).
-  const useServerMessages = isAuthenticated && !!currentSession;
+  // Single source of truth per render. While the authenticated session is
+  // bootstrapping (loading), we render the server source as empty rather than
+  // briefly swapping to the local cache and back — that was the source of the
+  // flicker. We only fall back to local when truly unauthenticated, or when
+  // the server session lookup explicitly failed.
+  const useServerMessages =
+    isAuthenticated && (sessionStatus === "loading" || sessionStatus === "ready");
   const messages: LocalChatMessage[] = useServerMessages
     ? dbMessages.map(m => ({
         id: m.id,
