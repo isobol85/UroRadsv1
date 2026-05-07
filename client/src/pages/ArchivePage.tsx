@@ -248,6 +248,14 @@ export default function ArchivePage() {
   });
 
   const trimmedQuery = searchQuery.trim();
+  const [debouncedChatQuery, setDebouncedChatQuery] = useState(trimmedQuery);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedChatQuery(trimmedQuery);
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [trimmedQuery]);
 
   const filteredCases = useMemo(() => {
     if (!trimmedQuery) return cases;
@@ -263,16 +271,16 @@ export default function ArchivePage() {
   const { data: matchingChats = [] } = useQuery<
     Array<{ id: string; caseId: string; title: string | null; caseName: string }>
   >({
-    queryKey: ["/api/chat-sessions/search", trimmedQuery],
+    queryKey: ["/api/chat-sessions/search", debouncedChatQuery],
     queryFn: async () => {
       const res = await fetch(
-        `/api/chat-sessions/search?q=${encodeURIComponent(trimmedQuery)}`,
+        `/api/chat-sessions/search?q=${encodeURIComponent(debouncedChatQuery)}`,
         { credentials: "include" },
       );
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: isAuthenticated && trimmedQuery.length > 0,
+    enabled: isAuthenticated && debouncedChatQuery.length > 0,
   });
 
   // Calculate if user can edit a case: must be owner or admin
