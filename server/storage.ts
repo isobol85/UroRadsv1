@@ -9,6 +9,7 @@ export interface IStorage {
   getCaseByNumber(caseNumber: number): Promise<Case | undefined>;
   getNextCaseNumber(): Promise<number>;
   createCase(case_: InsertCase, createdBy?: string): Promise<Case>;
+  getCaseCountsByCreator(): Promise<Record<string, number>>;
   updateCase(id: string, updates: { title?: string; explanation?: string; category?: string }): Promise<Case | undefined>;
   deleteCase(id: string): Promise<boolean>;
   
@@ -79,6 +80,23 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return case_;
+  }
+
+  async getCaseCountsByCreator(): Promise<Record<string, number>> {
+    const rows = await db
+      .select({
+        createdBy: cases.createdBy,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(cases)
+      .groupBy(cases.createdBy);
+    const result: Record<string, number> = {};
+    for (const row of rows) {
+      if (row.createdBy) {
+        result[row.createdBy] = Number(row.count);
+      }
+    }
+    return result;
   }
 
   async updateCase(id: string, updates: { title?: string; explanation?: string; category?: string }): Promise<Case | undefined> {

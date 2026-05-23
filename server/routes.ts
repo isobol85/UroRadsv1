@@ -167,7 +167,12 @@ export async function registerRoutes(
   app.get("/api/admin/users", isAuthenticated, isAdmin, async (_req, res) => {
     try {
       const users = await authStorage.listUsers();
-      res.json(users);
+      const counts = await storage.getCaseCountsByCreator();
+      const usersWithCounts = users.map((u) => ({
+        ...u,
+        caseCount: counts[u.id] ?? 0,
+      }));
+      res.json(usersWithCounts);
     } catch (error) {
       console.error("Error listing users:", error);
       res.status(500).json({ error: "Failed to list users" });

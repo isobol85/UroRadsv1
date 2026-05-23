@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { Users as UsersIcon, ShieldCheck, Shield, Loader2 } from "lucide-react";
+import { Users as UsersIcon, ShieldCheck, Shield, Loader2, FolderOpen } from "lucide-react";
+import { Link } from "wouter";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,6 +11,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import type { User } from "@shared/models/auth";
+
+type AdminUser = User & { caseCount: number };
 
 function isUsernameUser(u: User): boolean {
   return u.id.startsWith("username_");
@@ -35,7 +38,7 @@ export default function UsersPage() {
     }
   }, [authLoading, isAuthenticated, currentUser, navigate]);
 
-  const { data: users = [], isLoading } = useQuery<User[]>({
+  const { data: users = [], isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
     enabled: !!currentUser?.isAdmin,
   });
@@ -150,6 +153,24 @@ export default function UsersPage() {
                     <p className="text-xs text-muted-foreground truncate">
                       {u.email || (usernameOnly ? "Username-only login" : "No email")}
                     </p>
+                    {u.caseCount > 0 ? (
+                      <Link
+                        href={`/archive?createdBy=${encodeURIComponent(u.id)}`}
+                        className="inline-flex items-center gap-1 mt-1 text-xs text-primary hover:underline"
+                        data-testid={`link-user-cases-${u.id}`}
+                      >
+                        <FolderOpen className="w-3 h-3" />
+                        {u.caseCount} {u.caseCount === 1 ? "case" : "cases"}
+                      </Link>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 mt-1 text-xs text-muted-foreground"
+                        data-testid={`text-user-cases-${u.id}`}
+                      >
+                        <FolderOpen className="w-3 h-3" />
+                        No cases
+                      </span>
+                    )}
                   </div>
 
                   <div className="shrink-0">

@@ -238,10 +238,26 @@ function SwipeableCaseItem({ case_, canEdit, onDeleteClick, onEditClick }: Swipe
 
 export default function ArchivePage() {
   const { toast } = useToast();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const { user, isAuthenticated } = useAuth();
+
+  const createdByFilter = useMemo(() => {
+    const queryString = typeof window !== "undefined" ? window.location.search : "";
+    const params = new URLSearchParams(queryString);
+    return params.get("createdBy");
+  }, [location]);
+
+  const { data: users = [] } = useQuery<Array<{ id: string; displayName: string | null; firstName: string | null; lastName: string | null; email: string | null }>>({
+    queryKey: ["/api/admin/users"],
+    enabled: !!createdByFilter && !!user?.isAdmin,
+  });
+
+  const filterUser = useMemo(() => {
+    if (!createdByFilter) return null;
+    return users.find((u) => u.id === createdByFilter) ?? null;
+  }, [createdByFilter, users]);
 
   const { data: cases = [], isLoading } = useQuery<Case[]>({
     queryKey: ["/api/cases"],
@@ -257,16 +273,21 @@ export default function ArchivePage() {
     return () => clearTimeout(handle);
   }, [trimmedQuery]);
 
+  const baselineCases = useMemo(() => {
+    if (!createdByFilter) return cases;
+    return cases.filter((c) => c.createdBy === createdByFilter);
+  }, [cases, createdByFilter]);
+
   const filteredCases = useMemo(() => {
-    if (!trimmedQuery) return cases;
+    if (!trimmedQuery) return baselineCases;
     const q = trimmedQuery.toLowerCase();
-    return cases.filter(
+    return baselineCases.filter(
       (c) =>
         c.title.toLowerCase().includes(q) ||
         c.category.toLowerCase().includes(q) ||
         String(c.caseNumber).includes(q),
     );
-  }, [cases, trimmedQuery]);
+  }, [baselineCases, trimmedQuery]);
 
   const { data: matchingChats = [] } = useQuery<
     Array<{ id: string; caseId: string; title: string | null; caseName: string }>
@@ -365,10 +386,37 @@ export default function ArchivePage() {
         </div>
         <span className="text-sm text-muted-foreground" data-testid="text-case-count">
           {trimmedQuery
-            ? `${filteredCases.length} of ${cases.length}`
-            : `${cases.length} ${cases.length === 1 ? "case" : "cases"}`}
+            ? `${filteredCases.length} of ${baselineCases.length}`
+            : `${baselineCases.length} ${baselineCases.length === 1 ? "case" : "cases"}`}
         </span>
       </header>
+
+      {createdByFilter && (
+        <div
+          className="flex items-center justify-between gap-2 px-4 py-2 border-b border-border bg-muted/40"
+          data-testid="banner-creator-filter"
+        >
+          <span className="text-xs text-muted-foreground truncate">
+            Showing cases created by{" "}
+            <span className="font-medium text-foreground" data-testid="text-creator-filter-name">
+              {filterUser
+                ? filterUser.displayName ||
+                  ([filterUser.firstName, filterUser.lastName].filter(Boolean).join(" ") ||
+                    filterUser.email ||
+                    "this user")
+                : "this user"}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate("/archive")}
+            className="text-xs text-primary hover:underline shrink-0"
+            data-testid="button-clear-creator-filter"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       <div className="px-4 py-2 border-b border-border shrink-0">
         <div className="relative">
