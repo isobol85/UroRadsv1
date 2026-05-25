@@ -62,31 +62,31 @@ export default function LoginPage() {
         backgroundPosition: 'center',
       }}
     >
-      <div className="absolute inset-0 bg-black/60" />
-      
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/55 to-slate-950/80" />
+
       <header className="relative z-10 flex items-center justify-center px-4 h-14 shrink-0">
-        <h1 className="text-lg font-semibold text-white" data-testid="text-login-title">Sign In</h1>
+        <h1 className="text-lg font-semibold text-white tracking-tight" data-testid="text-login-title">UroRads</h1>
       </header>
 
       <div className="relative z-10 flex-1 flex items-center justify-center p-6">
-        <Card className="w-full max-w-sm bg-card/95 backdrop-blur-sm">
-          <CardHeader className="text-center">
-            <CardTitle>Welcome to UroRads</CardTitle>
-            <CardDescription>Sign in to add cases to the database</CardDescription>
+        <Card className="w-full max-w-sm bg-card/95 backdrop-blur-md shadow-xl border-card-border">
+          <CardHeader className="text-center pb-4">
+            <CardTitle className="text-xl tracking-tight">Welcome to UroRads</CardTitle>
+            <CardDescription>Sign in to add cases to the library</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button 
-              className="w-full bg-white text-gray-800 border border-gray-300" 
+            <Button
+              className="w-full h-11 rounded-xl bg-white text-slate-800 hover:bg-white border border-slate-200 shadow-sm font-medium"
               onClick={handleSSOLogin}
               data-testid="button-sso-google"
             >
               <SiGoogle className="w-4 h-4 mr-2" style={{ color: '#4285F4' }} />
               Sign in with Google
             </Button>
-            
+
             <div className="relative py-2">
               <Separator />
-              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs uppercase tracking-wider text-muted-foreground">
                 or
               </span>
             </div>
@@ -97,12 +97,13 @@ export default function LoginPage() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 disabled={loginMutation.isPending}
+                className="h-11 rounded-xl"
                 data-testid="input-display-name"
               />
-              <Button 
-                type="submit" 
-                variant="outline" 
-                className="w-full"
+              <Button
+                type="submit"
+                variant="outline"
+                className="w-full h-11 rounded-xl"
                 disabled={loginMutation.isPending || displayName.trim().length < 2}
                 data-testid="button-username-login"
               >
@@ -112,6 +113,10 @@ export default function LoginPage() {
                 Continue
               </Button>
             </form>
+
+            <p className="text-[11px] text-center text-muted-foreground pt-2">
+              For medical education only. Not for clinical decision-making.
+            </p>
           </CardContent>
         </Card>
       </div>

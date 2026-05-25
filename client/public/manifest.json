@@ -1,29 +1,52 @@
 {
-  "name": "UroRads - Uro-Radiology Education",
+  "name": "UroRads — Uro-Radiology Education",
   "short_name": "UroRads",
-  "description": "Case-based uro-radiology education one image at a time",
-  "theme_color": "#0f172a",
-  "background_color": "#0f172a",
+  "description": "Case-based uro-radiology learning, one teaching image at a time.",
+  "theme_color": "#f7fafc",
+  "background_color": "#f7fafc",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "scope": "/",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
+  "id": "/?source=pwa",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["medical", "education"],
   "icons": [
     {
       "src": "/pwa-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/pwa-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/pwa-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add a case",
+      "short_name": "Add",
+      "description": "Upload a new teaching case",
+      "url": "/add?source=shortcut",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Browse archive",
+      "short_name": "Archive",
+      "description": "Open the case archive",
+      "url": "/archive?source=shortcut",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

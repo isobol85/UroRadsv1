@@ -1,4 +1,4 @@
-const CACHE_NAME = 'urorads-v2';
+const CACHE_NAME = 'urorads-v3-polish';
 const STATIC_ASSETS = [
   '/',
   '/favicon.png',
