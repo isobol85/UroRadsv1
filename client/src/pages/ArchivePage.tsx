@@ -39,20 +39,11 @@ function useIsTouchDevice() {
   return isTouch;
 }
 
-function getCategoryColor(category: string): string {
-  const colors: Record<string, string> = {
-    "Stones": "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    "Hydronephrosis": "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    "Mass/Tumor": "bg-red-500/10 text-red-600 dark:text-red-400",
-    "Infection": "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-    "Trauma": "bg-rose-500/10 text-rose-600 dark:text-rose-400",
-    "Congenital": "bg-teal-500/10 text-teal-600 dark:text-teal-400",
-    "Vascular": "bg-pink-500/10 text-pink-600 dark:text-pink-400",
-    "Bladder": "bg-purple-500/10 text-purple-600 dark:text-purple-400",
-    "Prostate": "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
-    "Other": "bg-muted text-muted-foreground",
-  };
-  return colors[category] || "bg-muted text-muted-foreground";
+function getCategoryColor(_category: string): string {
+  // Clinical & Calm: categorical labels use a single tokenized neutral chip.
+  // The text content already identifies the category; differentiation by hue
+  // would fight the calm palette.
+  return "bg-muted text-foreground/75 border border-card-border";
 }
 
 interface SwipeableCaseItemProps {
@@ -103,17 +94,17 @@ function SwipeableCaseItem({ case_, canEdit, onDeleteClick, onEditClick }: Swipe
       className="flex items-center gap-4 px-4 py-4 hover-elevate active-elevate-2 cursor-pointer"
       data-testid={`archive-item-${case_.id}`}
     >
-      <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-        <img 
-          src={case_.imageUrl} 
-          alt="" 
+      <div className="w-12 h-12 rounded-xl bg-muted border border-card-border flex items-center justify-center shrink-0 overflow-hidden shadow-sm">
+        <img
+          src={case_.imageUrl}
+          alt=""
           className="w-full h-full object-cover"
         />
       </div>
-      
+
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <span className="text-sm font-bold text-foreground" data-testid={`text-case-number-${case_.id}`}>
+          <span className="text-sm font-semibold text-foreground font-display text-tabular" data-testid={`text-case-number-${case_.id}`}>
             Case #{case_.caseNumber}
           </span>
           <span 
@@ -349,9 +340,11 @@ export default function ArchivePage() {
   if (isLoading) {
     return (
       <div className="flex flex-col h-full">
-        <header className="flex items-center px-4 h-14 border-b border-border shrink-0">
-          <FolderOpen className="w-5 h-5 mr-2 text-muted-foreground" />
-          <h1 className="text-lg font-semibold" data-testid="text-archive-title">Archive</h1>
+        <header className="flex items-center px-4 h-14 app-shell-surface border-b border-card-border shrink-0">
+          <span className="flex h-7 w-7 mr-2 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <FolderOpen className="w-4 h-4" />
+          </span>
+          <h1 className="text-[15px] font-semibold tracking-tight" data-testid="text-archive-title">Archive</h1>
         </header>
         <div className="flex-1 flex items-center justify-center">
           <LoadingPearls />
@@ -363,9 +356,11 @@ export default function ArchivePage() {
   if (cases.length === 0) {
     return (
       <div className="flex flex-col h-full">
-        <header className="flex items-center px-4 h-14 border-b border-border shrink-0">
-          <FolderOpen className="w-5 h-5 mr-2 text-muted-foreground" />
-          <h1 className="text-lg font-semibold" data-testid="text-archive-title">Archive</h1>
+        <header className="flex items-center px-4 h-14 app-shell-surface border-b border-card-border shrink-0">
+          <span className="flex h-7 w-7 mr-2 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <FolderOpen className="w-4 h-4" />
+          </span>
+          <h1 className="text-[15px] font-semibold tracking-tight" data-testid="text-archive-title">Archive</h1>
         </header>
         <EmptyState
           title="The archive is empty"
@@ -379,12 +374,14 @@ export default function ArchivePage() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
+      <header className="flex items-center justify-between px-4 h-14 app-shell-surface border-b border-card-border shrink-0">
         <div className="flex items-center">
-          <FolderOpen className="w-5 h-5 mr-2 text-muted-foreground" />
-          <h1 className="text-lg font-semibold" data-testid="text-archive-title">Archive</h1>
+          <span className="flex h-7 w-7 mr-2 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <FolderOpen className="w-4 h-4" />
+          </span>
+          <h1 className="text-[15px] font-semibold tracking-tight" data-testid="text-archive-title">Archive</h1>
         </div>
-        <span className="text-sm text-muted-foreground" data-testid="text-case-count">
+        <span className="text-[12px] font-medium text-muted-foreground text-tabular" data-testid="text-case-count">
           {trimmedQuery
             ? `${filteredCases.length} of ${baselineCases.length}`
             : `${baselineCases.length} ${baselineCases.length === 1 ? "case" : "cases"}`}
@@ -418,14 +415,14 @@ export default function ArchivePage() {
         </div>
       )}
 
-      <div className="px-4 py-2 border-b border-border shrink-0">
+      <div className="px-4 py-3 border-b border-card-border shrink-0 bg-background">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search cases by title or category..."
-            className="pl-9 pr-9 h-9"
+            className="pl-9 pr-9 h-10 rounded-xl bg-muted/40 border-transparent focus-visible:bg-card focus-visible:border-input"
             data-testid="input-archive-search"
           />
           {searchQuery && (

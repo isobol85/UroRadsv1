@@ -392,19 +392,25 @@ export default function AddCasePage() {
   if (!authLoading && !isAuthenticated) {
     return (
       <div className="flex flex-col h-full">
-        <header className="flex items-center justify-center px-4 h-14 border-b border-border shrink-0">
-          <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
+        <header className="flex items-center justify-center px-4 h-14 app-shell-surface border-b border-card-border shrink-0">
+          <h1 className="text-[15px] font-semibold tracking-tight" data-testid="text-add-title">Add Case</h1>
         </header>
 
-        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
-          <div className="text-center space-y-2">
-            <h2 className="text-xl font-medium">Sign in to add cases</h2>
-            <p className="text-sm text-muted-foreground max-w-xs">
-              You need to be logged in to contribute cases to the database
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 text-center">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-primary/10 blur-xl" aria-hidden="true" />
+            <div className="relative w-20 h-20 rounded-full bg-card border border-card-border shadow-sm flex items-center justify-center">
+              <LogIn className="w-8 h-8 text-primary/70" strokeWidth={1.5} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold tracking-tight">Sign in to add cases</h2>
+            <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
+              You need to be logged in to contribute teaching cases to the library.
             </p>
           </div>
           <Link href="/login">
-            <Button size="lg" className="gap-2" data-testid="button-login-prompt">
+            <Button size="lg" className="gap-2 rounded-full px-6 shadow-sm" data-testid="button-login-prompt">
               <LogIn className="w-5 h-5" />
               Sign In
             </Button>
@@ -586,23 +592,32 @@ export default function AddCasePage() {
   if (!hasMedia) {
     return (
       <div className="flex flex-col h-full">
-        <header className="flex items-center justify-center px-4 h-14 border-b border-border shrink-0">
-          <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
+        <header className="flex items-center justify-center px-4 h-14 app-shell-surface border-b border-card-border shrink-0">
+          <h1 className="text-[15px] font-semibold tracking-tight" data-testid="text-add-title">Add Case</h1>
         </header>
 
-        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 text-center">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-primary/10 blur-xl" aria-hidden="true" />
+            <div className="relative w-20 h-20 rounded-full bg-card border border-card-border shadow-sm flex items-center justify-center">
+              <Upload className="w-8 h-8 text-primary/70" strokeWidth={1.5} />
+            </div>
+          </div>
+          <div className="space-y-2 max-w-xs">
+            <h2 className="text-xl font-semibold tracking-tight">Upload a teaching case</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Upload a single image or a short video (10-15 sec) of scrolling through CT slices.
+            </p>
+          </div>
           <Button
             size="lg"
-            className="w-full max-w-xs h-14 text-base gap-2"
+            className="w-full max-w-xs h-12 text-base gap-2 rounded-full shadow-sm"
             onClick={handleUploadClick}
             data-testid="button-upload"
           >
             <Upload className="w-5 h-5" />
-            Upload
+            Choose file
           </Button>
-          <p className="text-sm text-muted-foreground text-center max-w-xs">
-            Upload an image or a short video (10-15 sec) of scrolling through CT slices
-          </p>
         </div>
 
         <input
@@ -621,13 +636,14 @@ export default function AddCasePage() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
-        <h1 className="text-lg font-semibold" data-testid="text-add-title">Add Case</h1>
+      <header className="flex items-center justify-between px-4 h-14 app-shell-surface border-b border-card-border shrink-0">
+        <h1 className="text-[15px] font-semibold tracking-tight" data-testid="text-add-title">Add Case</h1>
         {hasGeneratedExplanation && (
           <Button
             size="sm"
             onClick={handleSubmitCase}
             disabled={isLoading || isSubmitting}
+            className="rounded-full shadow-sm"
             data-testid="button-submit-case"
           >
             {isSubmitting ? (
@@ -653,7 +669,7 @@ export default function AddCasePage() {
         >
           <div className="flex-1 flex flex-col p-4 min-h-0">
             {mediaType === "video" && selectedVideoUrl ? (
-              <div className="flex-1 flex items-center justify-center rounded-md overflow-hidden bg-black/5 dark:bg-white/5">
+              <div className="flex-1 flex items-center justify-center rounded-2xl overflow-hidden bg-black border border-card-border shadow-sm">
                 <video
                   src={selectedVideoUrl}
                   controls

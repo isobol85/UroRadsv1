@@ -341,15 +341,15 @@ export default function CasePage() {
           aria-hidden={!isImageMode}
           onTransitionEnd={isImageMode ? handleTransitionEnd : undefined}
         >
-          <div className="flex items-center justify-between px-4 py-2 shrink-0">
-            <span className="text-sm font-medium text-muted-foreground" data-testid="text-case-number">
+          <div className="flex items-center justify-between px-4 py-2.5 shrink-0">
+            <span className="text-sm font-medium text-muted-foreground font-display text-tabular" data-testid="text-case-number">
               Case #{currentCase.caseNumber}
             </span>
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleNextCase}
-              className="gap-1 h-8"
+              className="gap-1 h-8 pressable rounded-full"
               data-testid="button-next-case"
             >
               Next
@@ -358,7 +358,7 @@ export default function CasePage() {
           </div>
           <div className="flex-1 flex flex-col px-4 pb-4 min-h-0">
             {currentCase.mediaType === "video" && currentCase.videoUrl ? (
-              <div className="flex-1 flex items-center justify-center rounded-md overflow-hidden bg-black/5 dark:bg-white/5">
+              <div className="flex-1 flex items-center justify-center rounded-2xl overflow-hidden bg-black border border-card-border shadow-sm">
                 <video
                   src={`/api/videos/${currentCase.id}/stream`}
                   controls
@@ -384,10 +384,10 @@ export default function CasePage() {
           <button
             onClick={() => handleModeChange("read")}
             disabled={isTransitioning}
-            className="shrink-0 h-12 flex items-center justify-center gap-2 bg-card border-t border-border"
+            className="shrink-0 h-12 flex items-center justify-center gap-2 app-shell-surface border-t border-card-border hover-elevate active-elevate-2"
             data-testid="button-expand-read"
           >
-            <ChevronUp className="w-5 h-5 text-foreground" />
+            <ChevronUp className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium text-foreground">Read explanation</span>
           </button>
         </div>
@@ -406,18 +406,18 @@ export default function CasePage() {
             <button
               onClick={() => handleModeChange("image")}
               disabled={isTransitioning}
-              className="shrink-0 p-3 border-b border-border hover-elevate active-elevate-2 transition-all"
+              className="shrink-0 p-3 border-b border-card-border hover-elevate active-elevate-2 transition-all"
               data-testid="button-thumbnail"
             >
               <div className="flex items-center gap-3">
-                <div className="w-20 h-14 bg-muted border border-border rounded-md overflow-hidden shrink-0 relative">
+                <div className="w-20 h-14 bg-black border border-card-border rounded-xl overflow-hidden shrink-0 relative shadow-sm">
                   <img
                     src={currentCase.imageUrl}
                     alt={currentCase.title}
-                    className="w-full h-full object-contain bg-black/5 dark:bg-white/5"
+                    className="w-full h-full object-contain"
                   />
                   {currentCase.mediaType === "video" && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                       <Video className="w-5 h-5 text-white" />
                     </div>
                   )}
@@ -451,12 +451,12 @@ export default function CasePage() {
               )}
               
               {isLoading && (
-                <div className="flex justify-start" data-testid="chat-loading">
-                  <div className="bg-muted rounded-2xl rounded-tl-sm p-4">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                <div className="flex justify-start animate-fade-up" data-testid="chat-loading">
+                  <div className="bg-accent-ai border border-accent-ai rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
+                    <div className="flex gap-1.5">
+                      <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: "0ms", backgroundColor: "hsl(var(--accent-ai))" }} />
+                      <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: "150ms", backgroundColor: "hsl(var(--accent-ai))" }} />
+                      <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: "300ms", backgroundColor: "hsl(var(--accent-ai))" }} />
                     </div>
                   </div>
                 </div>
@@ -464,7 +464,7 @@ export default function CasePage() {
             </div>
           </ScrollArea>
 
-          <div className="shrink-0 p-3 border-t border-border bg-background">
+          <div className="shrink-0 p-3 border-t border-card-border bg-background">
             <div className="flex gap-2 items-end">
               <Textarea
                 ref={inputRef}
@@ -472,15 +472,16 @@ export default function CasePage() {
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask a follow-up question..."
-                className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2"
+                className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2 rounded-xl bg-muted/40 border-transparent focus-visible:bg-card focus-visible:border-input"
                 disabled={isLoading || (isAuthenticated && sessionStatus === "loading")}
                 rows={1}
                 data-testid="input-chat"
               />
-              <Button 
-                size="icon" 
+              <Button
+                size="icon"
                 onClick={handleSendMessage}
                 disabled={!inputValue.trim() || isLoading || (isAuthenticated && sessionStatus === "loading")}
+                className="rounded-full h-10 w-10 shadow-sm shrink-0"
                 data-testid="button-send"
               >
                 <Send className="w-4 h-4" />

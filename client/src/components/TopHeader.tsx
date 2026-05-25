@@ -92,6 +92,7 @@ export function TopHeader({ onMenuClick }: TopHeaderProps) {
         size="icon"
         onClick={onMenuClick}
         className="pressable"
+        aria-label="Open chat history"
         data-testid="button-menu"
       >
         <Menu className="h-5 w-5" />
@@ -114,7 +115,7 @@ export function TopHeader({ onMenuClick }: TopHeaderProps) {
       ) : isAuthenticated && user ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="rounded-full pressable" data-testid="button-user-menu">
+            <Button variant="ghost" size="icon" className="rounded-full pressable" aria-label="Open account menu" data-testid="button-user-menu">
               <Avatar className="w-8 h-8 ring-1 ring-card-border">
                 <AvatarImage src={user.profileImageUrl || undefined} alt={displayName} />
                 <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">{initials}</AvatarFallback>
@@ -140,12 +141,12 @@ export function TopHeader({ onMenuClick }: TopHeaderProps) {
               <>
                 <DropdownMenuSeparator />
                 {canPrompt ? (
-                  <DropdownMenuItem onClick={prompt}>
+                  <DropdownMenuItem onClick={prompt} data-testid="menuitem-install-app">
                     <Download className="w-4 h-4 mr-2" />
                     Install app
                   </DropdownMenuItem>
                 ) : (
-                  <DropdownMenuItem onClick={() => setIosOpen(true)}>
+                  <DropdownMenuItem onClick={() => setIosOpen(true)} data-testid="menuitem-install-ios">
                     <Share className="w-4 h-4 mr-2" />
                     Add to Home Screen
                   </DropdownMenuItem>
@@ -163,12 +164,12 @@ export function TopHeader({ onMenuClick }: TopHeaderProps) {
         <div className="flex items-center gap-1">
           {(canPrompt || iosTip) && (
             canPrompt ? (
-              <Button variant="ghost" size="sm" className="pressable" onClick={prompt}>
+              <Button variant="ghost" size="sm" className="pressable" onClick={prompt} aria-label="Install UroRads app" data-testid="button-install-app">
                 <Download className="w-4 h-4 mr-1.5" />
                 Install
               </Button>
             ) : (
-              <Button variant="ghost" size="sm" className="pressable" onClick={() => setIosOpen(true)}>
+              <Button variant="ghost" size="sm" className="pressable" onClick={() => setIosOpen(true)} aria-label="Add UroRads to Home Screen" data-testid="button-install-ios">
                 <Share className="w-4 h-4 mr-1.5" />
                 Install
               </Button>

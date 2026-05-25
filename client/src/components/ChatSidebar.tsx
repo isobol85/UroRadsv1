@@ -70,16 +70,21 @@ export function ChatSidebar({ open, onOpenChange }: ChatSidebarProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-80 p-0 flex flex-col">
-        <SheetHeader className="p-4 border-b">
-          <SheetTitle className="text-lg font-semibold">Chat History</SheetTitle>
+        <SheetHeader className="p-4 border-b border-card-border app-shell-surface">
+          <SheetTitle className="text-[15px] font-semibold tracking-tight flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <MessageSquare className="w-4 h-4" />
+            </span>
+            Chat History
+          </SheetTitle>
           {isAuthenticated && (
-            <div className="relative mt-2">
+            <div className="relative mt-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search chats..."
                 value={searchQuery}
                 onChange={handleSearchChange}
-                className="pl-9"
+                className="pl-9 h-10 rounded-xl bg-muted/40 border-transparent focus-visible:bg-card focus-visible:border-input"
                 data-testid="input-search-chats"
               />
             </div>
@@ -122,18 +127,18 @@ export function ChatSidebar({ open, onOpenChange }: ChatSidebarProps) {
                 <button
                   key={session.id}
                   onClick={() => handleSessionClick(session)}
-                  className="w-full text-left p-4 hover-elevate transition-colors border-b last:border-b-0"
+                  className="w-full text-left p-4 hover-elevate active-elevate-2 transition-colors border-b border-card-border last:border-b-0"
                   data-testid={`chat-session-${session.id}`}
                 >
-                  <div className="font-medium text-sm truncate">
+                  <div className="font-medium text-sm truncate text-foreground">
                     {session.caseName}
                   </div>
                   {session.title && (
-                    <div className="text-xs text-muted-foreground truncate mt-0.5">
+                    <div className="text-xs text-muted-foreground truncate mt-1 leading-relaxed">
                       {session.title}
                     </div>
                   )}
-                  <div className="text-xs text-muted-foreground mt-1">
+                  <div className="text-[11px] text-muted-foreground mt-1.5 font-medium">
                     {formatDate(session.updatedAt)}
                   </div>
                 </button>

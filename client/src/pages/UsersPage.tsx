@@ -94,9 +94,11 @@ export default function UsersPage() {
   if (authLoading || !currentUser?.isAdmin) {
     return (
       <div className="flex flex-col h-full">
-        <header className="flex items-center px-4 h-14 border-b border-border shrink-0">
-          <UsersIcon className="w-5 h-5 mr-2 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Users</h1>
+        <header className="flex items-center px-4 h-14 app-shell-surface border-b border-card-border shrink-0">
+          <span className="flex h-7 w-7 mr-2 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <UsersIcon className="w-4 h-4" />
+          </span>
+          <h1 className="text-[15px] font-semibold tracking-tight">Users</h1>
         </header>
         <div className="flex-1 flex items-center justify-center">
           <LoadingPearls />
@@ -107,14 +109,16 @@ export default function UsersPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
+      <header className="flex items-center justify-between px-4 h-14 app-shell-surface border-b border-card-border shrink-0">
         <div className="flex items-center">
-          <UsersIcon className="w-5 h-5 mr-2 text-muted-foreground" />
-          <h1 className="text-lg font-semibold" data-testid="text-users-title">
+          <span className="flex h-7 w-7 mr-2 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <UsersIcon className="w-4 h-4" />
+          </span>
+          <h1 className="text-[15px] font-semibold tracking-tight" data-testid="text-users-title">
             Users
           </h1>
         </div>
-        <span className="text-sm text-muted-foreground" data-testid="text-user-count">
+        <span className="text-[12px] font-medium text-muted-foreground text-tabular" data-testid="text-user-count">
           {users.length} {users.length === 1 ? "user" : "users"}
         </span>
       </header>
@@ -147,12 +151,12 @@ export default function UsersPage() {
               return (
                 <div
                   key={u.id}
-                  className="flex items-center gap-3 px-4 py-3 border-b border-border"
+                  className="flex items-center gap-3 px-4 py-3.5 border-b border-card-border"
                   data-testid={`user-row-${u.id}`}
                 >
-                  <Avatar className="w-9 h-9 shrink-0">
+                  <Avatar className="w-10 h-10 shrink-0 ring-1 ring-card-border">
                     <AvatarImage src={u.profileImageUrl || undefined} alt={displayName} />
-                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                    <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">{initials}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">

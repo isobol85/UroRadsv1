@@ -18,7 +18,7 @@ export default function NotFound() {
             The page you're looking for doesn't exist or has moved.
           </p>
           <Link href="/">
-            <Button className="mt-6 rounded-full px-5">
+            <Button className="mt-6 rounded-full px-5" data-testid="button-back-to-cases">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to cases
             </Button>

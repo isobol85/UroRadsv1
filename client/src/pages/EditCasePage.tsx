@@ -194,8 +194,8 @@ export default function EditCasePage() {
   if (isCaseLoading || !caseData) {
     return (
       <div className="flex flex-col h-full">
-        <header className="flex items-center justify-center px-4 h-14 border-b border-border shrink-0">
-          <h1 className="text-lg font-semibold" data-testid="text-edit-title">Edit Case</h1>
+        <header className="flex items-center justify-center px-4 h-14 app-shell-surface border-b border-card-border shrink-0">
+          <h1 className="text-[15px] font-semibold tracking-tight" data-testid="text-edit-title">Edit Case</h1>
         </header>
         <div className="flex-1 flex items-center justify-center">
           <LoadingPearls />
@@ -208,21 +208,22 @@ export default function EditCasePage() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
-        <div className="flex items-center gap-2">
+      <header className="flex items-center justify-between px-3 h-14 app-shell-surface border-b border-card-border shrink-0">
+        <div className="flex items-center gap-1.5">
           <Link href="/archive">
-            <Button size="icon" variant="ghost" data-testid="button-back">
+            <Button size="icon" variant="ghost" className="pressable" aria-label="Back to archive" data-testid="button-back">
               <ArrowLeft className="w-5 h-5" />
             </Button>
           </Link>
-          <h1 className="text-lg font-semibold" data-testid="text-edit-title">
-            Edit Case #{caseData.caseNumber}
+          <h1 className="text-[15px] font-semibold tracking-tight" data-testid="text-edit-title">
+            Edit Case <span className="text-tabular text-muted-foreground font-normal">#{caseData.caseNumber}</span>
           </h1>
         </div>
         <Button
           size="sm"
           onClick={handleSaveChanges}
           disabled={isLoading || isSubmitting}
+          className="rounded-full shadow-sm"
           data-testid="button-save-case"
         >
           {isSubmitting ? (
@@ -282,11 +283,11 @@ export default function EditCasePage() {
               data-testid="button-thumbnail"
             >
               <div className="flex items-center gap-3">
-                <div className="w-20 h-14 bg-muted border border-border rounded-md overflow-hidden shrink-0">
+                <div className="w-20 h-14 bg-black border border-card-border rounded-xl overflow-hidden shrink-0 shadow-sm">
                   <img
                     src={caseData.imageUrl}
                     alt="Case thumbnail"
-                    className="w-full h-full object-contain bg-black/5 dark:bg-white/5"
+                    className="w-full h-full object-contain"
                   />
                 </div>
                 <div className="text-left">
@@ -312,12 +313,12 @@ export default function EditCasePage() {
               ))}
 
               {isLoading && (
-                <div className="flex justify-start" data-testid="chat-loading">
-                  <div className="bg-muted rounded-2xl rounded-tl-sm p-4">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                <div className="flex justify-start animate-fade-up" data-testid="chat-loading">
+                  <div className="bg-accent-ai border border-accent-ai rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
+                    <div className="flex gap-1.5">
+                      <span className="w-2 h-2 bg-accent-ai rounded-full animate-bounce" style={{ animationDelay: "0ms", backgroundColor: "hsl(var(--accent-ai))" }} />
+                      <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: "150ms", backgroundColor: "hsl(var(--accent-ai))" }} />
+                      <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: "300ms", backgroundColor: "hsl(var(--accent-ai))" }} />
                     </div>
                   </div>
                 </div>
@@ -325,7 +326,7 @@ export default function EditCasePage() {
             </div>
           </ScrollArea>
 
-          <div className="shrink-0 p-3 border-t border-border bg-background">
+          <div className="shrink-0 p-3 border-t border-card-border bg-background">
             <div className="flex gap-2 items-end">
               <Textarea
                 ref={inputRef}
@@ -333,7 +334,7 @@ export default function EditCasePage() {
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Refine the explanation..."
-                className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2"
+                className="flex-1 min-h-[40px] max-h-[120px] resize-none py-2 rounded-xl bg-muted/40 border-transparent focus-visible:bg-card focus-visible:border-input"
                 disabled={isLoading}
                 rows={1}
                 data-testid="input-chat"
@@ -342,6 +343,7 @@ export default function EditCasePage() {
                 size="icon"
                 onClick={handleSendMessage}
                 disabled={isLoading || !inputValue.trim()}
+                className="rounded-full h-10 w-10 shadow-sm shrink-0"
                 data-testid="button-send"
               >
                 <Send className="w-4 h-4" />
