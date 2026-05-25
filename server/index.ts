@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { recoverInterruptedJobs } from "./job-manager";
 
 const app = express();
 const httpServer = createServer(app);
@@ -61,6 +62,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Mark any jobs left behind by a previous process as failed BEFORE we
+  // start accepting requests, so clients that reconnect via /api/ai/jobs/:id
+  // see a clean terminal state instead of a phantom "running" status.
+  await recoverInterruptedJobs();
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

@@ -1,4 +1,5 @@
-import { pgTable, text, varchar, integer, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, text, varchar, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { users } from "./models/auth";
@@ -68,3 +69,21 @@ export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
 
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 export type ChatMessage = typeof chatMessages.$inferSelect;
+
+// Persistent backing store for in-flight AI analysis jobs so they survive a
+// full server restart. The in-memory job-manager is still the hot path; this
+// table just makes sure a phone that reconnects after a deploy/crash can
+// still find its job.
+export const analysisJobs = pgTable("analysis_jobs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  kind: text("kind").notNull(),
+  status: text("status").notNull(),
+  events: jsonb("events").notNull().default(sql`'[]'::jsonb`),
+  result: jsonb("result"),
+  error: jsonb("error"),
+  lastSeq: integer("last_seq").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type AnalysisJobRow = typeof analysisJobs.$inferSelect;

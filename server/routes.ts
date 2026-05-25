@@ -778,8 +778,8 @@ export async function registerRoutes(
 
   // Snapshot of a job's current status/result. Used by the client to recover
   // after a connection drop (especially on mobile when the screen sleeps).
-  app.get("/api/ai/jobs/:id", (req, res) => {
-    const job = getJob(req.params.id);
+  app.get("/api/ai/jobs/:id", async (req, res) => {
+    const job = await getJob(req.params.id);
     if (!job) return res.status(404).json({ error: "Job not found" });
     res.json(snapshotJob(job));
   });
@@ -787,7 +787,7 @@ export async function registerRoutes(
   // SSE resume endpoint. The client passes ?sinceSeq=<lastSeen> and we replay
   // anything they missed, then stream live events until the job ends.
   app.get("/api/ai/jobs/:id/stream", async (req, res) => {
-    const job = getJob(req.params.id);
+    const job = await getJob(req.params.id);
     if (!job) return res.status(404).json({ error: "Job not found" });
 
     const sinceSeq = Number.parseInt(String(req.query.sinceSeq ?? "0"), 10) || 0;
