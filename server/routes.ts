@@ -559,6 +559,11 @@ export async function registerRoutes(
 
     const job = createJob("image");
     res.setHeader("X-Job-Id", job.id);
+    // Flush headers IMMEDIATELY so the client learns the job id before we
+    // start the slow analysis work. Without this, a mobile client whose
+    // connection dies mid-analysis would never see X-Job-Id and would have
+    // no way to recover via /api/ai/jobs/:id.
+    (res as any).flushHeaders?.();
 
     // Start work detached from this request so the job survives a client drop.
     void runImageAnalysisJob(job, parsed.imageBase64, parsed.attendingPrompt);
