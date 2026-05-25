@@ -1,10 +1,20 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Users as UsersIcon, ShieldCheck, Shield, Loader2, FolderOpen } from "lucide-react";
+import { Users as UsersIcon, ShieldCheck, Shield, Loader2, FolderOpen, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { LoadingPearls } from "@/components/LoadingPearls";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -31,6 +41,7 @@ export default function UsersPage() {
   const { user: currentUser, isLoading: authLoading, isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     if (!authLoading && (!isAuthenticated || !currentUser?.isAdmin)) {
@@ -54,6 +65,26 @@ export default function UsersPage() {
     onError: (err: Error) => {
       toast({
         title: "Could not update user",
+        description: err.message.replace(/^\d+:\s*/, ""),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/admin/users/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+      toast({ title: "User deleted" });
+      setUserToDelete(null);
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Could not delete user",
         description: err.message.replace(/^\d+:\s*/, ""),
         variant: "destructive",
       });
@@ -173,7 +204,7 @@ export default function UsersPage() {
                     )}
                   </div>
 
-                  <div className="shrink-0">
+                  <div className="shrink-0 flex items-center gap-2">
                     {usernameOnly ? (
                       <span
                         className="text-xs text-muted-foreground"
@@ -220,6 +251,18 @@ export default function UsersPage() {
                         Promote
                       </Button>
                     )}
+                    {!isSelf && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setUserToDelete(u)}
+                        data-testid={`button-delete-user-${u.id}`}
+                        title="Delete user"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               );
@@ -227,6 +270,63 @@ export default function UsersPage() {
           )}
         </div>
       </ScrollArea>
+
+      <AlertDialog
+        open={!!userToDelete}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) setUserToDelete(null);
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-delete-user">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this user?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {userToDelete && (
+                <>
+                  This will permanently remove{" "}
+                  <span className="font-medium text-foreground">
+                    {getDisplayName(userToDelete)}
+                  </span>{" "}
+                  and their chat history.
+                  {userToDelete.caseCount > 0 && (
+                    <>
+                      {" "}Their{" "}
+                      {userToDelete.caseCount === 1
+                        ? "1 case"
+                        : `${userToDelete.caseCount} cases`}{" "}
+                      will be kept but no longer attributed to anyone.
+                    </>
+                  )}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={deleteMutation.isPending}
+              data-testid="button-cancel-delete-user"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (userToDelete) deleteMutation.mutate(userToDelete.id);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-user"
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-1.5" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

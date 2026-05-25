@@ -1,4 +1,5 @@
 import { users, type User, type UpsertUser } from "@shared/models/auth";
+import { cases } from "@shared/schema";
 import { db } from "../../db";
 import { asc, eq, sql } from "drizzle-orm";
 
@@ -16,6 +17,7 @@ export interface IAuthStorage {
   getUserCount(): Promise<number>;
   listUsers(): Promise<User[]>;
   setUserAdmin(id: string, isAdmin: boolean): Promise<User | undefined>;
+  deleteUser(id: string): Promise<boolean>;
 }
 
 class AuthStorage implements IAuthStorage {
@@ -65,6 +67,23 @@ class AuthStorage implements IAuthStorage {
 
   async listUsers(): Promise<User[]> {
     return db.select().from(users).orderBy(asc(users.createdAt));
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    return await db.transaction(async (tx) => {
+      // Anonymize owned cases by clearing createdBy so cases remain available
+      // for other learners even after the author's account is removed.
+      await tx
+        .update(cases)
+        .set({ createdBy: null })
+        .where(eq(cases.createdBy, id));
+      // chat_sessions and chat_messages cascade via FK onDelete.
+      const deleted = await tx
+        .delete(users)
+        .where(eq(users.id, id))
+        .returning({ id: users.id });
+      return deleted.length > 0;
+    });
   }
 
   async setUserAdmin(id: string, isAdmin: boolean): Promise<User | undefined> {

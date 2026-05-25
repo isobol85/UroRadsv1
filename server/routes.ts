@@ -213,6 +213,32 @@ export async function registerRoutes(
     }
   });
 
+  // Delete a user (admin only). Anonymizes owned cases; cascades chat data.
+  app.delete("/api/admin/users/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const targetId = req.params.id;
+      const currentUserId = req.user?.claims?.sub;
+
+      if (targetId === currentUserId) {
+        return res.status(400).json({ error: "You cannot delete your own account" });
+      }
+
+      const target = await authStorage.getUser(targetId);
+      if (!target) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const deleted = await authStorage.deleteUser(targetId);
+      if (!deleted) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
   app.get("/api/cases", async (req, res) => {
     try {
       const cases = await storage.getCases();
