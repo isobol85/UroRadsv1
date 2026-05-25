@@ -13,6 +13,88 @@ import { useLocation, Link } from "wouter";
 import type { Case } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useWakeLock } from "@/hooks/use-wake-lock";
+
+// Persisted between renders / reloads so a mobile user whose screen slept can
+// reconnect to the in-flight analysis instead of seeing a broken state. We
+// intentionally use sessionStorage (per-tab, cleared on close) rather than
+// localStorage since this is transient upload state.
+const PENDING_JOB_KEY = "urorads_pending_job";
+
+type PendingJob = {
+  jobId: string;
+  kind: "image" | "video";
+  mediaType: MediaType;
+  fileName?: string;
+  attendingPrompt?: string;
+  // Image only: a data URL we hold onto so a reload can still submit the case.
+  // We skip persisting it if it doesn't fit in sessionStorage.
+  imageData?: string | null;
+  lastSeq?: number;
+};
+
+function readPendingJob(): PendingJob | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_JOB_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PendingJob;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingJob(job: PendingJob) {
+  try {
+    sessionStorage.setItem(PENDING_JOB_KEY, JSON.stringify(job));
+  } catch {
+    // Quota exceeded (usually because of a large imageData blob). Retry once
+    // without the image so at least the jobId survives.
+    if (job.imageData) {
+      try {
+        sessionStorage.setItem(
+          PENDING_JOB_KEY,
+          JSON.stringify({ ...job, imageData: null }),
+        );
+      } catch {
+        // give up — wake lock should keep most flows alive anyway
+      }
+    }
+  }
+}
+
+function clearPendingJob() {
+  try {
+    sessionStorage.removeItem(PENDING_JOB_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+async function pollJobUntilDone(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<{ status: string; result: any; error: any }> {
+  // Conservative backoff: 1s, 2s, 4s, then cap at 5s.
+  const delays = [1000, 2000, 4000];
+  let attempt = 0;
+  while (true) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const res = await fetch(`/api/ai/jobs/${jobId}`, { credentials: "include", signal });
+    if (res.status === 404) {
+      throw new Error("This analysis is no longer available. Please try again.");
+    }
+    if (!res.ok) {
+      throw new Error("Could not reach the analysis service.");
+    }
+    const snap = await res.json();
+    if (snap.status === "completed" || snap.status === "failed") {
+      return { status: snap.status, result: snap.result, error: snap.error };
+    }
+    const delay = delays[Math.min(attempt, delays.length - 1)] ?? 5000;
+    attempt += 1;
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+}
 
 interface Message {
   id: string;
@@ -108,10 +190,56 @@ export default function AddCasePage() {
 
   const analyzeMutation = useMutation({
     mutationFn: async (data: { imageBase64: string; attendingPrompt?: string }) => {
-      const response = await apiRequest("POST", "/api/ai/analyze", data);
-      return response.json() as Promise<AnalyzeResponse>;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      let jobId: string | undefined;
+      try {
+        const response = await fetch("/api/ai/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+          credentials: "include",
+          signal: controller.signal,
+        });
+
+        jobId = response.headers.get("X-Job-Id") ?? undefined;
+        if (jobId) {
+          writePendingJob({
+            jobId,
+            kind: "image",
+            mediaType: "image",
+            fileName: selectedFileName ?? undefined,
+            attendingPrompt: data.attendingPrompt,
+            imageData: data.imageBase64,
+          });
+        }
+
+        if (response.ok) {
+          return (await response.json()) as AnalyzeResponse;
+        }
+
+        // Non-OK but server may still be processing the job in the background.
+        if (jobId) {
+          const snap = await pollJobUntilDone(jobId);
+          if (snap.status === "completed") return snap.result as AnalyzeResponse;
+          throw new Error(snap.error?.details || snap.error?.error || "Analysis failed");
+        }
+        throw new Error("Analysis failed");
+      } catch (err) {
+        if ((err as any)?.name === "AbortError") throw err;
+        // Connection died mid-request (typical mobile screen-sleep case): the
+        // job is still running server-side, so fall back to polling its result.
+        if (jobId) {
+          const snap = await pollJobUntilDone(jobId);
+          if (snap.status === "completed") return snap.result as AnalyzeResponse;
+          throw new Error(snap.error?.details || snap.error?.error || "Analysis failed");
+        }
+        throw err;
+      }
     },
     onSuccess: (data) => {
+      clearPendingJob();
       setCurrentExplanation(data.explanation);
       setCurrentTitle(data.title);
       setCurrentCategory(data.category);
@@ -123,6 +251,7 @@ export default function AddCasePage() {
       }]);
     },
     onError: () => {
+      clearPendingJob();
       toast({
         title: "Analysis failed",
         description: "Could not analyze the image. Please try again.",
@@ -130,6 +259,121 @@ export default function AddCasePage() {
       });
     },
   });
+
+  // Consume an SSE response body, calling onEvent for each parsed event.
+  // Returns normally when the stream ends; throws on network errors.
+  const consumeSseResponse = async (
+    response: Response,
+    onEvent: (eventType: string, data: any) => void,
+    signal: AbortSignal,
+  ) => {
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("No response body");
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    const dispatchBlock = (block: string) => {
+      const lines = block.split("\n");
+      let eventType = "message";
+      const dataLines: string[] = [];
+      for (const line of lines) {
+        if (line.startsWith("event: ")) eventType = line.slice(7).trim();
+        else if (line.startsWith("data: ")) dataLines.push(line.slice(6));
+      }
+      if (dataLines.length === 0) return;
+      const dataStr = dataLines.join("\n").trim();
+      if (!dataStr) return;
+      try {
+        onEvent(eventType, JSON.parse(dataStr));
+      } catch (e) {
+        if (e instanceof SyntaxError) return;
+        throw e;
+      }
+    };
+
+    while (true) {
+      if (signal.aborted) return;
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() || "";
+      for (const block of blocks) {
+        if (block.trim()) dispatchBlock(block);
+      }
+    }
+    if (buffer.trim()) dispatchBlock(buffer);
+  };
+
+  // Drive video streaming state from SSE events. Returns true if a terminal
+  // event (complete/error) was seen, so callers know not to retry.
+  const handleVideoStreamEvents = (
+    onTerminal: () => void,
+    seqRef: { current: number },
+    accumulatedTextRef: { current: string },
+  ) => {
+    return (eventType: string, data: any) => {
+      // If the server is replaying events we already applied (warm reconnect
+      // after a stream drop), skip them so chunk text isn't appended twice.
+      const seq = typeof data?.seq === "number" ? data.seq : undefined;
+      if (seq !== undefined && seq <= seqRef.current) return;
+      if (seq !== undefined) seqRef.current = seq;
+
+      if (eventType === "status" && data.status) {
+        setStreamingState(prev => ({
+          ...prev,
+          statusMessage: data.status,
+          displayMessage: data.message || data.status,
+        }));
+      }
+
+      if (eventType === "chunk" && data.text) {
+        accumulatedTextRef.current += data.text;
+        const text = accumulatedTextRef.current;
+        setStreamingState(prev => ({ ...prev, streamedText: text }));
+      }
+
+      if (eventType === "complete" && data.explanation !== undefined) {
+        setStreamingState(prev => ({
+          ...prev,
+          statusMessage: "complete",
+          displayMessage: "Analysis complete",
+        }));
+
+        setCurrentExplanation(data.explanation);
+        setCurrentTitle(data.title);
+        setCurrentCategory(data.category);
+        setSelectedImage(data.thumbnail);
+        setStoredVideoUrl(data.videoUrl);
+        setHasGeneratedExplanation(true);
+
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== "streaming-msg");
+          return [...filtered, {
+            id: `msg-${Date.now()}`,
+            role: "ai",
+            content: `Here's the AI-generated explanation from your CT scan video (${data.videoInfo?.duration || 0}s):\n\n${data.explanation}\n\nWould you like me to refine any part of this explanation?`,
+          }];
+        });
+
+        clearPendingJob();
+        setTimeout(() => {
+          setStreamingState({
+            isStreaming: false,
+            streamedText: "",
+            statusMessage: "",
+            displayMessage: "",
+          });
+        }, 800);
+        onTerminal();
+      }
+
+      if (eventType === "error" && data.error) {
+        onTerminal();
+        throw new Error(data.details || data.error);
+      }
+    };
+  };
 
   const startStreamingAnalysis = async (video: File, attendingPrompt?: string) => {
     const formData = new FormData();
@@ -139,7 +383,8 @@ export default function AddCasePage() {
     }
 
     abortControllerRef.current = new AbortController();
-    
+    const controller = abortControllerRef.current;
+
     setStreamingState({
       isStreaming: true,
       streamedText: "",
@@ -147,176 +392,128 @@ export default function AddCasePage() {
       displayMessage: "Uploading video...",
     });
 
+    const seqRef = { current: 0 };
+    const accumulatedTextRef = { current: "" };
+    let terminal = false;
+    const markTerminal = () => { terminal = true; };
+    const onEvent = handleVideoStreamEvents(markTerminal, seqRef, accumulatedTextRef);
+
+    let jobId: string | undefined;
+
+    const persistContext = () => {
+      if (!jobId) return;
+      writePendingJob({
+        jobId,
+        kind: "video",
+        mediaType: "video",
+        fileName: video.name,
+        attendingPrompt,
+        lastSeq: seqRef.current,
+      });
+    };
+
     try {
       const response = await fetch("/api/ai/analyze-video-stream", {
         method: "POST",
         body: formData,
         credentials: "include",
-        signal: abortControllerRef.current.signal,
+        signal: controller.signal,
       });
+
+      jobId = response.headers.get("X-Job-Id") ?? undefined;
+      persistContext();
 
       if (!response.ok) {
         throw new Error("Video analysis failed");
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
+      await consumeSseResponse(response, (ev, data) => {
+        if (ev === "job" && data?.jobId && !jobId) {
+          jobId = data.jobId;
+          persistContext();
+        }
+        onEvent(ev, data);
+        // Persist progress only on status changes (a handful of writes per
+        // analysis) instead of on every chunk to avoid synchronous
+        // sessionStorage churn during long streams. Cold-resume after a full
+        // reload re-replays from seq=0 anyway, and warm reconnect uses the
+        // in-memory seqRef.
+        if (ev === "status") persistContext();
+      }, controller.signal);
+
+      // Stream ended without a terminal event — try one resume in case the
+      // connection was dropped (e.g. mobile screen sleep) before the server
+      // emitted "complete".
+      if (!terminal && jobId && !controller.signal.aborted) {
+        await resumeVideoStream(jobId, seqRef, accumulatedTextRef, onEvent, controller.signal);
       }
 
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullText = "";
+      if (terminal) return;
 
-      const processEvent = (eventType: string, dataStr: string) => {
-        if (!dataStr) return;
-        
-        try {
-          const data = JSON.parse(dataStr);
-          
-          if (eventType === "status" && data.status) {
-            // Use data.status (lowercase tokens) for progress mapping
-            // Store data.message for human-readable display
-            setStreamingState(prev => ({
-              ...prev,
-              statusMessage: data.status,
-              displayMessage: data.message || data.status,
-            }));
-          }
-          
-          if (eventType === "chunk" && data.text) {
-            fullText += data.text;
-            setStreamingState(prev => ({
-              ...prev,
-              streamedText: fullText,
-              // Keep statusMessage latched - don't clear it when chunks arrive
-            }));
-          }
-          
-          if (eventType === "complete" && data.explanation !== undefined) {
-            // Set status to "complete" so progress bar fills to 100%
-            setStreamingState(prev => ({
-              ...prev,
-              statusMessage: "complete",
-              displayMessage: "Analysis complete",
-            }));
-            
-            setCurrentExplanation(data.explanation);
-            setCurrentTitle(data.title);
-            setCurrentCategory(data.category);
-            setSelectedImage(data.thumbnail);
-            setStoredVideoUrl(data.videoUrl);
-            setHasGeneratedExplanation(true);
-            
-            setMessages(prev => {
-              const filtered = prev.filter(m => m.id !== "streaming-msg");
-              return [...filtered, {
-                id: `msg-${Date.now()}`,
-                role: "ai",
-                content: `Here's the AI-generated explanation from your CT scan video (${data.videoInfo?.duration || 0}s):\n\n${data.explanation}\n\nWould you like me to refine any part of this explanation?`
-              }];
-            });
-            
-            // Brief delay to show 100% completion before hiding overlay
-            setTimeout(() => {
-              setStreamingState({
-                isStreaming: false,
-                streamedText: "",
-                statusMessage: "",
-                displayMessage: "",
-              });
-            }, 800);
-          }
-          
-          if (eventType === "error" && data.error) {
-            throw new Error(data.details || data.error);
-          }
-        } catch (e) {
-          if (e instanceof SyntaxError) {
-            return;
-          }
-          throw e;
-        }
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        
-        const events = buffer.split("\n\n");
-        buffer = events.pop() || "";
-
-        for (const eventBlock of events) {
-          if (!eventBlock.trim()) continue;
-          
-          const lines = eventBlock.split("\n");
-          let eventType = "message";
-          let dataLines: string[] = [];
-          
-          for (const line of lines) {
-            if (line.startsWith("event: ")) {
-              eventType = line.slice(7).trim();
-            } else if (line.startsWith("data: ")) {
-              dataLines.push(line.slice(6));
-            }
-          }
-          
-          if (dataLines.length > 0) {
-            const dataStr = dataLines.join("\n").trim();
-            processEvent(eventType, dataStr);
-          }
-        }
-      }
-
-      if (buffer.trim()) {
-        const lines = buffer.split("\n");
-        let eventType = "message";
-        let dataLines: string[] = [];
-        
-        for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            eventType = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            dataLines.push(line.slice(6));
-          }
-        }
-        
-        if (dataLines.length > 0) {
-          const dataStr = dataLines.join("\n").trim();
-          processEvent(eventType, dataStr);
-        }
-      }
-
-      setStreamingState(prev => {
-        if (prev.isStreaming) {
-          return {
-            isStreaming: false,
-            streamedText: "",
-            statusMessage: "",
-            displayMessage: "",
-          };
-        }
-        return prev;
-      });
+      // Genuinely no terminal event after all retries — bail out cleanly.
+      setStreamingState({ isStreaming: false, streamedText: "", statusMessage: "", displayMessage: "" });
     } catch (error) {
-      if ((error as Error).name === "AbortError") {
-        return;
+      if ((error as Error).name === "AbortError") return;
+
+      // Connection error mid-stream: try to resume from the job server-side.
+      if (jobId && !controller.signal.aborted) {
+        try {
+          await resumeVideoStream(jobId, seqRef, accumulatedTextRef, onEvent, controller.signal);
+          if (terminal) return;
+        } catch (resumeErr) {
+          if ((resumeErr as Error).name === "AbortError") return;
+          // fall through to error UI
+          error = resumeErr;
+        }
       }
-      
-      setStreamingState({
-        isStreaming: false,
-        streamedText: "",
-        statusMessage: "",
-        displayMessage: "",
-      });
-      
+
+      clearPendingJob();
+      setStreamingState({ isStreaming: false, streamedText: "", statusMessage: "", displayMessage: "" });
       toast({
         title: "Video analysis failed",
         description: error instanceof Error ? error.message : "Could not analyze the video. Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  // Reconnects to an in-flight video job and continues streaming from where
+  // we left off. Retries with backoff on transient failures.
+  const resumeVideoStream = async (
+    jobId: string,
+    seqRef: { current: number },
+    accumulatedTextRef: { current: string },
+    onEvent: (ev: string, data: any) => void,
+    signal: AbortSignal,
+  ) => {
+    const delays = [500, 1500, 3000, 5000];
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (signal.aborted) return;
+      try {
+        const url = `/api/ai/jobs/${jobId}/stream?sinceSeq=${seqRef.current}`;
+        const res = await fetch(url, { credentials: "include", signal });
+        if (res.status === 404) {
+          throw new Error("This analysis is no longer available. Please try again.");
+        }
+        if (!res.ok) throw new Error("Could not reconnect to analysis");
+        await consumeSseResponse(res, (ev, data) => {
+          if (ev === "job") return;
+          onEvent(ev, data);
+          if (ev === "status") {
+            writePendingJob({
+              jobId,
+              kind: "video",
+              mediaType: "video",
+              lastSeq: seqRef.current,
+            });
+          }
+        }, signal);
+        return; // stream ended cleanly (terminal event handled inside onEvent)
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        if (attempt === delays.length - 1) throw err;
+        await new Promise(r => setTimeout(r, delays[attempt]));
+      }
     }
   };
 
@@ -367,6 +564,7 @@ export default function AddCasePage() {
       queryClient.setQueryData<Case[]>(["/api/cases"], (oldCases) => {
         return oldCases ? [newCase, ...oldCases] : [newCase];
       });
+      clearPendingJob();
       setSelectedImage(null);
       setMessages([]);
       setCurrentExplanation("");
@@ -385,8 +583,171 @@ export default function AddCasePage() {
     },
   });
 
-  const isLoading = analyzeMutation.isPending || refineMutation.isPending || videoAnalyzeMutation.isPending || streamingState.isStreaming;
+  const [isResumingImage, setIsResumingImage] = useState(false);
+
+  const isLoading = analyzeMutation.isPending || refineMutation.isPending || videoAnalyzeMutation.isPending || streamingState.isStreaming || isResumingImage;
   const isSubmitting = submitMutation.isPending;
+
+  // Hold the screen Wake Lock for as long as an analysis is in flight, so
+  // mobile devices don't turn the display off and tear down our SSE stream.
+  useWakeLock(isLoading);
+
+  // On mount, check whether a previous analysis is still running server-side
+  // (e.g. the user's phone slept and the original fetch died). If so, resume
+  // listening so the result hydrates back into the UI.
+  useEffect(() => {
+    const pending = readPendingJob();
+    if (!pending) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    (async () => {
+      try {
+        // Fetch a snapshot first so we know whether work has already finished.
+        const res = await fetch(`/api/ai/jobs/${pending.jobId}`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (cancelled || controller.signal.aborted) return;
+        if (res.status === 404) {
+          clearPendingJob();
+          return;
+        }
+        if (!res.ok) return;
+        const snap = await res.json();
+
+        // Restore the chat shell so the user sees the same "Analyzing…" state
+        // they were on before the screen slept.
+        setMediaType(pending.mediaType);
+        if (pending.fileName) setSelectedFileName(pending.fileName);
+        if (pending.kind === "image" && pending.imageData) {
+          setSelectedImage(pending.imageData);
+        }
+        setMode("read");
+        setMessages([{
+          id: `msg-resume-${Date.now()}`,
+          role: "ai",
+          content: pending.mediaType === "video"
+            ? "Resuming your CT scan video analysis..."
+            : "Resuming your image analysis...",
+        }]);
+
+        if (snap.status === "completed" && snap.result) {
+          const data = snap.result;
+          setCurrentExplanation(data.explanation);
+          setCurrentTitle(data.title);
+          setCurrentCategory(data.category);
+          if (pending.kind === "video") {
+            setSelectedImage(data.thumbnail);
+            setStoredVideoUrl(data.videoUrl);
+          }
+          setHasGeneratedExplanation(true);
+          setMessages([{
+            id: `msg-${Date.now()}`,
+            role: "ai",
+            content: pending.kind === "video"
+              ? `Here's the AI-generated explanation from your CT scan video (${data.videoInfo?.duration || 0}s):\n\n${data.explanation}\n\nWould you like me to refine any part of this explanation?`
+              : `Here's the AI-generated explanation for this case:\n\n${data.explanation}\n\nWould you like me to refine any part of this explanation?`,
+          }]);
+          clearPendingJob();
+          return;
+        }
+
+        if (snap.status === "failed") {
+          clearPendingJob();
+          toast({
+            title: pending.kind === "video" ? "Video analysis failed" : "Analysis failed",
+            description: snap.error?.details || snap.error?.error || "Please try again.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Still running — re-attach to the live job.
+        if (pending.kind === "video") {
+          setStreamingState({
+            isStreaming: true,
+            streamedText: "",
+            statusMessage: "analyzing",
+            displayMessage: "Reconnecting to analysis...",
+          });
+          const seqRef = { current: pending.lastSeq ?? 0 };
+          const accumulatedTextRef = { current: "" };
+          let terminal = false;
+          const onEvent = handleVideoStreamEvents(
+            () => { terminal = true; },
+            seqRef,
+            accumulatedTextRef,
+          );
+          try {
+            await resumeVideoStream(pending.jobId, seqRef, accumulatedTextRef, onEvent, controller.signal);
+            if (!terminal && !controller.signal.aborted) {
+              setStreamingState({ isStreaming: false, streamedText: "", statusMessage: "", displayMessage: "" });
+              clearPendingJob();
+            }
+          } catch (err) {
+            if ((err as Error).name === "AbortError") return;
+            clearPendingJob();
+            setStreamingState({ isStreaming: false, streamedText: "", statusMessage: "", displayMessage: "" });
+            toast({
+              title: "Video analysis failed",
+              description: err instanceof Error ? err.message : "Could not reconnect to the analysis.",
+              variant: "destructive",
+            });
+          }
+        } else {
+          // Image: poll the job until terminal, then hydrate as if the
+          // original POST had returned normally.
+          setIsResumingImage(true);
+          try {
+            const result = await pollJobUntilDone(pending.jobId, controller.signal);
+            if (cancelled || controller.signal.aborted) return;
+            if (result.status === "completed" && result.result) {
+              const data = result.result;
+              setCurrentExplanation(data.explanation);
+              setCurrentTitle(data.title);
+              setCurrentCategory(data.category);
+              setHasGeneratedExplanation(true);
+              setMessages([{
+                id: `msg-${Date.now()}`,
+                role: "ai",
+                content: `Here's the AI-generated explanation for this case:\n\n${data.explanation}\n\nWould you like me to refine any part of this explanation?`,
+              }]);
+              clearPendingJob();
+            } else {
+              clearPendingJob();
+              toast({
+                title: "Analysis failed",
+                description: result.error?.details || result.error?.error || "Please try again.",
+                variant: "destructive",
+              });
+            }
+          } catch (err) {
+            if ((err as Error).name === "AbortError") return;
+            clearPendingJob();
+            toast({
+              title: "Analysis failed",
+              description: err instanceof Error ? err.message : "Could not reconnect to the analysis.",
+              variant: "destructive",
+            });
+          } finally {
+            setIsResumingImage(false);
+          }
+        }
+      } catch {
+        // network down — leave pending in storage; user can retry on next visit
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+    // Intentionally only runs once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Show login prompt if not authenticated (must be after all hooks)
   if (!authLoading && !isAuthenticated) {
@@ -433,6 +794,7 @@ export default function AddCasePage() {
   };
 
   const resetState = () => {
+    clearPendingJob();
     setSelectedImage(null);
     setSelectedVideo(null);
     setSelectedFileName(null);
@@ -850,13 +1212,13 @@ export default function AddCasePage() {
       />
 
       {/* Full-screen cinematic loading overlay for image/video analysis */}
-      {(analyzeMutation.isPending || (streamingState.isStreaming && !streamingState.streamedText)) && (
+      {(analyzeMutation.isPending || isResumingImage || (streamingState.isStreaming && !streamingState.streamedText)) && (
         <div className="fixed inset-0 z-50" data-testid="loading-overlay">
           <LoadingPearls 
-            statusMessage={analyzeMutation.isPending ? "analyzing" : streamingState.statusMessage} 
-            displayMessage={analyzeMutation.isPending ? "Analyzing Image" : (streamingState.displayMessage || "Analyzing DICOM Data")}
-            imageThumbnail={analyzeMutation.isPending && mediaType === "image" ? (selectedImage || undefined) : undefined}
-            fileName={analyzeMutation.isPending && mediaType === "image" ? (selectedFileName || undefined) : undefined}
+            statusMessage={(analyzeMutation.isPending || isResumingImage) ? "analyzing" : streamingState.statusMessage} 
+            displayMessage={analyzeMutation.isPending ? "Analyzing Image" : (isResumingImage ? "Reconnecting to Analysis" : (streamingState.displayMessage || "Analyzing DICOM Data"))}
+            imageThumbnail={(analyzeMutation.isPending || isResumingImage) && mediaType === "image" ? (selectedImage || undefined) : undefined}
+            fileName={(analyzeMutation.isPending || isResumingImage) && mediaType === "image" ? (selectedFileName || undefined) : undefined}
           />
         </div>
       )}

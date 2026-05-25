@@ -11,6 +11,15 @@ import { objectStorageClient } from "./replit_integrations/object_storage";
 import { randomUUID } from "crypto";
 import seedData from "./seed-data.json";
 import { setupAuth, registerAuthRoutes, isAuthenticated, authStorage, isUsernameUserId } from "./replit_integrations/auth";
+import {
+  createJob,
+  emitJobEvent,
+  getJob,
+  snapshotJob,
+  streamJobToResponse,
+  waitForJobTerminal,
+  type Job,
+} from "./job-manager";
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -511,23 +520,59 @@ export async function registerRoutes(
     attendingPrompt: z.string().optional(),
   });
 
-  app.post("/api/ai/analyze", async (req, res) => {
+  // Runs an image analysis decoupled from the request lifecycle so that a
+  // mobile client whose connection drops (screen sleep, app backgrounded) can
+  // reconnect via /api/ai/jobs/:id and still pick up the result.
+  async function runImageAnalysisJob(
+    job: Job,
+    imageBase64: string,
+    attendingPrompt: string | undefined,
+  ) {
     try {
-      const { imageBase64, attendingPrompt } = analyzeImageSchema.parse(req.body);
+      emitJobEvent(job, "status", { status: "analyzing", message: "Analyzing the image..." });
       const normalized = await normalizeImageInput(imageBase64);
       const explanation = await generateExplanation(normalized, attendingPrompt);
       const [title, category] = await Promise.all([
         generateTitle(explanation),
         generateCategory(explanation),
       ]);
-      
-      res.json({ explanation, title, category });
+      emitJobEvent(job, "complete", { explanation, title, category });
+    } catch (error) {
+      console.error("Error analyzing image:", error);
+      emitJobEvent(job, "error", {
+        error: "Failed to analyze image",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  app.post("/api/ai/analyze", async (req, res) => {
+    let parsed;
+    try {
+      parsed = analyzeImageSchema.parse(req.body);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid request data", details: error.errors });
       }
+      return res.status(400).json({ error: "Invalid request data" });
+    }
+
+    const job = createJob("image");
+    res.setHeader("X-Job-Id", job.id);
+
+    // Start work detached from this request so the job survives a client drop.
+    void runImageAnalysisJob(job, parsed.imageBase64, parsed.attendingPrompt);
+
+    try {
+      const stillConnected = await waitForJobTerminal(job, req);
+      if (!stillConnected) return; // client gave up; result remains available via /api/ai/jobs/:id
+      if (job.status === "failed") {
+        return res.status(500).json({ jobId: job.id, ...(job.error || { error: "Failed to analyze image" }) });
+      }
+      return res.json({ jobId: job.id, ...(job.result || {}) });
+    } catch (error) {
       console.error("Error analyzing image:", error);
-      res.status(500).json({ error: "Failed to analyze image" });
+      res.status(500).json({ jobId: job.id, error: "Failed to analyze image" });
     }
   });
 
@@ -634,102 +679,123 @@ export async function registerRoutes(
     }
   });
 
-  // Streaming video analysis endpoint using SSE
-  app.post("/api/ai/analyze-video-stream", upload.single("video"), async (req, res) => {
+  // Runs video analysis decoupled from the request lifecycle. Mobile browsers
+  // tear down fetch streams when the screen sleeps; by emitting progress to a
+  // job, the work keeps running and the client can resume via
+  // /api/ai/jobs/:id/stream once the screen wakes back up.
+  async function runVideoAnalysisJob(
+    job: Job,
+    videoBuffer: Buffer,
+    filename: string,
+    attendingPrompt: string | undefined,
+  ) {
+    const sizeMB = (videoBuffer.length / (1024 * 1024)).toFixed(2);
+    console.log(`[STREAM] Processing video: ${filename}, size: ${sizeMB}MB (job=${job.id})`);
     try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No video file uploaded" });
-      }
+      emitJobEvent(job, "status", { status: "processing", message: "Preparing video for analysis..." });
 
-      const attendingPrompt = req.body.attendingPrompt;
-      const filename = req.file.originalname || "video.mp4";
-      const videoBuffer = req.file.buffer;
-      const sizeMB = (videoBuffer.length / (1024 * 1024)).toFixed(2);
-
-      console.log(`[STREAM] Processing video: ${filename}, size: ${sizeMB}MB`);
-
-      // Set up SSE headers
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
-
-      // Send initial event to indicate processing has started
-      res.write(`event: status\ndata: ${JSON.stringify({ status: "processing", message: "Preparing video for analysis..." })}\n\n`);
-
-      // Get video info
       const videoInfo = await getVideoInfo(videoBuffer);
       console.log(`[STREAM] Video info: duration=${videoInfo.duration}s, ${videoInfo.width}x${videoInfo.height}, ${videoInfo.fps}fps`);
 
-      res.write(`event: status\ndata: ${JSON.stringify({ status: "extracting", message: "Extracting frames from the CT scan video..." })}\n\n`);
-
+      emitJobEvent(job, "status", { status: "extracting", message: "Extracting frames from the CT scan video..." });
       const frameContext = await prepareFrameAnalysis(videoBuffer, filename, attendingPrompt);
 
-      res.write(`event: status\ndata: ${JSON.stringify({ status: "analyzing", message: "Analyzing the CT scan video..." })}\n\n`);
-
+      emitJobEvent(job, "status", { status: "analyzing", message: "Analyzing the CT scan video..." });
       let fullExplanation = "";
       for await (const chunk of streamFrameAnalysis(frameContext)) {
         fullExplanation += chunk;
-        res.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+        emitJobEvent(job, "chunk", { text: chunk });
       }
+      console.log(`[STREAM] Analysis complete using frames strategy (job=${job.id})`);
 
-      const analysisResult = {
-        explanation: fullExplanation,
-        thumbnail: frameContext.thumbnail,
-        strategy: "frames" as const,
-      };
-
-      console.log(`[STREAM] Analysis complete using frames strategy`);
-
-      // Generate title and category from the full explanation
-      res.write(`event: status\ndata: ${JSON.stringify({ status: "finalizing", message: "Generating metadata..." })}\n\n`);
-
+      emitJobEvent(job, "status", { status: "finalizing", message: "Generating metadata..." });
       const [title, category] = await Promise.all([
         generateTitle(fullExplanation),
         generateCategory(fullExplanation),
       ]);
 
-      // Compress and upload video
-      res.write(`event: status\ndata: ${JSON.stringify({ status: "uploading", message: "Uploading video..." })}\n\n`);
-      
+      emitJobEvent(job, "status", { status: "uploading", message: "Uploading video..." });
       console.log("[STREAM] Compressing video for storage...");
       const compressedVideo = await compressVideo(videoBuffer);
-      
       console.log("[STREAM] Uploading compressed video to object storage...");
       const videoUrl = await uploadVideoToStorage(compressedVideo, filename);
       console.log(`[STREAM] Video uploaded: ${videoUrl}`);
 
-      // Send final complete event with all metadata
-      res.write(`event: complete\ndata: ${JSON.stringify({
+      emitJobEvent(job, "complete", {
         explanation: fullExplanation,
         title,
         category,
         videoInfo,
-        analysisStrategy: analysisResult.strategy,
-        thumbnail: analysisResult.thumbnail,
+        analysisStrategy: "frames",
+        thumbnail: frameContext.thumbnail,
         videoUrl,
         mediaType: "video",
-      })}\n\n`);
-
-      res.end();
+      });
     } catch (error) {
       console.error("[STREAM] Error analyzing video:", error);
-      
-      // If headers haven't been sent, send JSON error
-      if (!res.headersSent) {
-        res.status(500).json({ 
-          error: "Failed to analyze video",
-          details: error instanceof Error ? error.message : "Unknown error"
-        });
-      } else {
-        // Headers already sent (SSE started), send error event
-        res.write(`event: error\ndata: ${JSON.stringify({ 
-          error: "Failed to analyze video",
-          details: error instanceof Error ? error.message : "Unknown error"
-        })}\n\n`);
-        res.end();
-      }
+      emitJobEvent(job, "error", {
+        error: "Failed to analyze video",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
     }
+  }
+
+  // Streaming video analysis endpoint using SSE
+  app.post("/api/ai/analyze-video-stream", upload.single("video"), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No video file uploaded" });
+    }
+
+    const attendingPrompt = req.body.attendingPrompt;
+    const filename = req.file.originalname || "video.mp4";
+    const videoBuffer = req.file.buffer;
+
+    const job = createJob("video");
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("X-Job-Id", job.id);
+    // Make sure headers (including X-Job-Id) reach the client immediately,
+    // before any of the actual analysis work begins.
+    (res as any).flushHeaders?.();
+
+    // Emit job id as the very first SSE event so clients that can't read
+    // headers (rare, but Safari has historically been quirky) can still recover.
+    res.write(`event: job\ndata: ${JSON.stringify({ jobId: job.id })}\n\n`);
+
+    // Detach work from the request lifecycle.
+    void runVideoAnalysisJob(job, videoBuffer, filename, attendingPrompt);
+
+    await streamJobToResponse(job, res, 0);
+  });
+
+  // Snapshot of a job's current status/result. Used by the client to recover
+  // after a connection drop (especially on mobile when the screen sleeps).
+  app.get("/api/ai/jobs/:id", (req, res) => {
+    const job = getJob(req.params.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    res.json(snapshotJob(job));
+  });
+
+  // SSE resume endpoint. The client passes ?sinceSeq=<lastSeen> and we replay
+  // anything they missed, then stream live events until the job ends.
+  app.get("/api/ai/jobs/:id/stream", async (req, res) => {
+    const job = getJob(req.params.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
+    const sinceSeq = Number.parseInt(String(req.query.sinceSeq ?? "0"), 10) || 0;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("X-Job-Id", job.id);
+    (res as any).flushHeaders?.();
+
+    res.write(`event: job\ndata: ${JSON.stringify({ jobId: job.id })}\n\n`);
+    await streamJobToResponse(job, res, sinceSeq);
   });
 
   // Test endpoint for multi-image capability
