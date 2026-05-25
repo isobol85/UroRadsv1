@@ -487,33 +487,46 @@ export default function AddCasePage() {
     signal: AbortSignal,
   ) => {
     const delays = [500, 1500, 3000, 5000];
-    for (let attempt = 0; attempt < delays.length; attempt++) {
-      if (signal.aborted) return;
-      try {
-        const url = `/api/ai/jobs/${jobId}/stream?sinceSeq=${seqRef.current}`;
-        const res = await fetch(url, { credentials: "include", signal });
-        if (res.status === 404) {
-          throw new Error("This analysis is no longer available. Please try again.");
-        }
-        if (!res.ok) throw new Error("Could not reconnect to analysis");
-        await consumeSseResponse(res, (ev, data) => {
-          if (ev === "job") return;
-          onEvent(ev, data);
-          if (ev === "status") {
-            writePendingJob({
-              jobId,
-              kind: "video",
-              mediaType: "video",
-              lastSeq: seqRef.current,
-            });
+    setIsReconnecting(true);
+    setReconnectAttempt(1);
+    try {
+      for (let attempt = 0; attempt < delays.length; attempt++) {
+        if (signal.aborted) return;
+        setReconnectAttempt(attempt + 1);
+        try {
+          const url = `/api/ai/jobs/${jobId}/stream?sinceSeq=${seqRef.current}`;
+          const res = await fetch(url, { credentials: "include", signal });
+          if (res.status === 404) {
+            throw new Error("This analysis is no longer available. Please try again.");
           }
-        }, signal);
-        return; // stream ended cleanly (terminal event handled inside onEvent)
-      } catch (err) {
-        if ((err as Error).name === "AbortError") return;
-        if (attempt === delays.length - 1) throw err;
-        await new Promise(r => setTimeout(r, delays[attempt]));
+          if (!res.ok) throw new Error("Could not reconnect to analysis");
+          // Stream re-opened: drop the "Reconnecting…" indicator while we
+          // consume events. If the stream drops again mid-consumption the
+          // outer loop will flip it back on.
+          setIsReconnecting(false);
+          await consumeSseResponse(res, (ev, data) => {
+            if (ev === "job") return;
+            onEvent(ev, data);
+            if (ev === "status") {
+              writePendingJob({
+                jobId,
+                kind: "video",
+                mediaType: "video",
+                lastSeq: seqRef.current,
+              });
+            }
+          }, signal);
+          return; // stream ended cleanly (terminal event handled inside onEvent)
+        } catch (err) {
+          if ((err as Error).name === "AbortError") return;
+          if (attempt === delays.length - 1) throw err;
+          setIsReconnecting(true);
+          await new Promise(r => setTimeout(r, delays[attempt]));
+        }
       }
+    } finally {
+      setIsReconnecting(false);
+      setReconnectAttempt(0);
     }
   };
 
@@ -584,6 +597,11 @@ export default function AddCasePage() {
   });
 
   const [isResumingImage, setIsResumingImage] = useState(false);
+  // True while resumeVideoStream is actively retrying. Used to surface a
+  // "Reconnecting…" indicator so a flaky mobile connection doesn't look like
+  // a frozen "Analyzing…" screen.
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
   const isLoading = analyzeMutation.isPending || refineMutation.isPending || videoAnalyzeMutation.isPending || streamingState.isStreaming || isResumingImage;
   const isSubmitting = submitMutation.isPending;
@@ -1157,6 +1175,18 @@ export default function AddCasePage() {
                   <div className="bg-muted rounded-2xl rounded-tl-sm p-4 max-w-[85%]">
                     <p className="text-sm whitespace-pre-wrap">{streamingState.streamedText}</p>
                     <span className="inline-block w-1.5 h-4 bg-foreground/70 animate-pulse ml-0.5" />
+                    {isReconnecting && (
+                      <div
+                        className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"
+                        data-testid="status-reconnecting"
+                      >
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>
+                          Reconnecting to analysis
+                          {reconnectAttempt > 1 ? ` (attempt ${reconnectAttempt})` : ""}…
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1215,8 +1245,16 @@ export default function AddCasePage() {
       {(analyzeMutation.isPending || isResumingImage || (streamingState.isStreaming && !streamingState.streamedText)) && (
         <div className="fixed inset-0 z-50" data-testid="loading-overlay">
           <LoadingPearls 
-            statusMessage={(analyzeMutation.isPending || isResumingImage) ? "analyzing" : streamingState.statusMessage} 
-            displayMessage={analyzeMutation.isPending ? "Analyzing Image" : (isResumingImage ? "Reconnecting to Analysis" : (streamingState.displayMessage || "Analyzing DICOM Data"))}
+            statusMessage={(analyzeMutation.isPending || isResumingImage || isReconnecting) ? "analyzing" : streamingState.statusMessage} 
+            displayMessage={
+              isReconnecting
+                ? `Reconnecting to analysis${reconnectAttempt > 1 ? ` (attempt ${reconnectAttempt})` : ""}…`
+                : analyzeMutation.isPending
+                  ? "Analyzing Image"
+                  : isResumingImage
+                    ? "Reconnecting to Analysis"
+                    : (streamingState.displayMessage || "Analyzing DICOM Data")
+            }
             imageThumbnail={(analyzeMutation.isPending || isResumingImage) && mediaType === "image" ? (selectedImage || undefined) : undefined}
             fileName={(analyzeMutation.isPending || isResumingImage) && mediaType === "image" ? (selectedFileName || undefined) : undefined}
           />
