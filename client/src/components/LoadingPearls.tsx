@@ -208,10 +208,11 @@ const RADIOLOGY_PEARLS = [
 
 const CYCLE_INTERVAL_MS = 9000;
 
-// Map status messages from Gemini API to progress percentages
+// Map status messages from the video analysis API to progress percentages
 const STATUS_TO_PROGRESS: Record<string, number> = {
   "processing": 10,
   "Preparing video for analysis...": 10,
+  "extracting": 25,
   "analyzing": 40,
   "Analyzing video with AI...": 40,
   "finalizing": 75,

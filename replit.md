@@ -22,9 +22,10 @@ Preferred communication style: Simple, everyday language.
 - **Runtime**: Node.js with Express
 - **Language**: TypeScript (ESM modules)
 - **API Pattern**: RESTful endpoints prefixed with `/api`
-- **AI Integration**: Google Gemini via Replit AI Integrations (server/ai.ts)
-  - gemini-2.5-flash: Image/video analysis (fast, efficient)
-  - gemini-2.5-pro: Chat responses, title/category generation (quality)
+- **AI Integration**: OpenAI via Replit AI Integrations (server/openai.ts + server/ai.ts)
+  - Strong vision/reasoning tier (gpt-5): image case analysis, video frame analysis, refine, follow-up chat
+  - Small tier (gpt-5-nano): title generation, category classification, chat-title generation
+  - All model IDs are centralized in the `MODELS` config object in `server/openai.ts`
 - **Development**: Vite middleware for hot module replacement
 - **Production**: Static file serving from built assets
 
@@ -100,7 +101,8 @@ Main tables:
 │       ├── hooks/        # Custom React hooks
 │       └── lib/          # Utilities and query client
 ├── server/           # Express backend
-│   ├── ai.ts         # Gemini AI integration
+│   ├── openai.ts     # OpenAI client + MODELS tier config (single AI gateway)
+│   ├── ai.ts         # AI helper functions (explanation, title, chat, etc.) using OpenAI
 │   ├── db.ts         # Database connection
 │   ├── storage.ts    # DatabaseStorage implementation
 │   └── routes.ts     # API route handlers
@@ -117,10 +119,11 @@ Main tables:
 ## External Dependencies
 
 ### AI Integration
-- **Google Gemini**: Via Replit AI Integrations for image analysis, chat, and explanations
-  - gemini-2.5-flash: Used for image/video analysis (fast processing)
-  - gemini-2.5-pro: Used for chat, titles, and text generation (high quality)
-- Environment variables: `AI_INTEGRATIONS_GEMINI_API_KEY`, `AI_INTEGRATIONS_GEMINI_BASE_URL`
+- **OpenAI**: Via Replit AI Integrations for image analysis, chat, and explanations
+  - Strong tier (gpt-5): image case analysis, video frame analysis, refine, follow-up chat
+  - Small tier (gpt-5-nano): titles, categories, chat-title generation
+  - Video uploads are analyzed via ffmpeg frame extraction (10 frames) passed as a multi-image OpenAI vision call; OpenAI does not accept native video input.
+- Environment variables: `AI_INTEGRATIONS_OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`
 
 ### Database
 - **PostgreSQL**: Primary database (configured via `DATABASE_URL` environment variable)

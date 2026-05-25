@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertCaseSchema, insertChatMessageSchema, insertChatSessionSchema } from "@shared/schema";
 import { generateExplanation, generateTitle, generateCategory, generateChatResponse, generateChatTitle, refineExplanation, testMultiImageCapability } from "./ai";
 import { getVideoInfo, compressVideo } from "./video";
-import { analyzeVideo } from "./video-analysis";
+import { analyzeVideo, prepareFrameAnalysis, streamFrameAnalysis } from "./video-analysis";
 import { z } from "zod";
 import multer from "multer";
 import { objectStorageClient } from "./replit_integrations/object_storage";
@@ -598,7 +598,7 @@ export async function registerRoutes(
       const videoInfo = await getVideoInfo(req.file.buffer);
       console.log(`Video info: duration=${videoInfo.duration}s, ${videoInfo.width}x${videoInfo.height}, ${videoInfo.fps}fps`);
 
-      // Analyze with the video analysis service (native or frame extraction based on VIDEO_ANALYSIS_MODE)
+      // Analyze with the video analysis service (frame extraction + OpenAI multi-image vision)
       const analysisResult = await analyzeVideo(req.file.buffer, filename, attendingPrompt);
       
       // Generate title and category from the explanation
@@ -661,14 +661,25 @@ export async function registerRoutes(
       const videoInfo = await getVideoInfo(videoBuffer);
       console.log(`[STREAM] Video info: duration=${videoInfo.duration}s, ${videoInfo.width}x${videoInfo.height}, ${videoInfo.fps}fps`);
 
-      // Use the unified analyzeVideo function which respects VIDEO_ANALYSIS_MODE
-      // This will use frame extraction in legacy mode (default) or native with fallback
-      res.write(`event: status\ndata: ${JSON.stringify({ status: "analyzing", message: "Extracting frames and analyzing the CT scan video..." })}\n\n`);
+      res.write(`event: status\ndata: ${JSON.stringify({ status: "extracting", message: "Extracting frames from the CT scan video..." })}\n\n`);
 
-      const analysisResult = await analyzeVideo(videoBuffer, filename, attendingPrompt);
-      const fullExplanation = analysisResult.explanation;
+      const frameContext = await prepareFrameAnalysis(videoBuffer, filename, attendingPrompt);
 
-      console.log(`[STREAM] Analysis complete using ${analysisResult.strategy} strategy`);
+      res.write(`event: status\ndata: ${JSON.stringify({ status: "analyzing", message: "Analyzing the CT scan video..." })}\n\n`);
+
+      let fullExplanation = "";
+      for await (const chunk of streamFrameAnalysis(frameContext)) {
+        fullExplanation += chunk;
+        res.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+      }
+
+      const analysisResult = {
+        explanation: fullExplanation,
+        thumbnail: frameContext.thumbnail,
+        strategy: "frames" as const,
+      };
+
+      console.log(`[STREAM] Analysis complete using frames strategy`);
 
       // Generate title and category from the full explanation
       res.write(`event: status\ndata: ${JSON.stringify({ status: "finalizing", message: "Generating metadata..." })}\n\n`);
